@@ -72,12 +72,18 @@ export class ExecutionLedger {
 
     const prevReceiptHash = this.lastReceiptHash;
 
+    const metadata = {
+      ...(action.metadata || {}),
+      parentOrganization: 'Nymrel -> JalenBuilds LLC',
+      verifiableTrust: true,
+    };
+
     const payloadToHash: Record<string, unknown> = {
       actionId,
       actionType: action.actionType,
       commandSummary: action.command ? action.command.slice(0, 160) : undefined,
       decision: evaluation.decision,
-      metadata: action.metadata || {},
+      metadata,
       prevReceiptHash,
       receiptId,
       sessionId: this.sessionId,

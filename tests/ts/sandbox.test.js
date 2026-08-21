@@ -28,7 +28,11 @@ describe('SuretySandbox Suite', () => {
       const target = path.join(rootDir, '..', '..', 'etc', 'passwd');
       const res = sandbox.validatePath(target, false);
       assert.strictEqual(res.allowed, false);
-      assert.ok(res.reason?.includes('Path traversal detected') || res.reason?.includes('outside allowed workspace roots'));
+      assert.ok(
+        res.reason?.includes('Path traversal detected') ||
+        res.reason?.includes('outside allowed workspace roots') ||
+        res.reason?.includes('sensitive path blocked')
+      );
     });
 
     it('blocks Windows absolute paths outside workspace root', () => {

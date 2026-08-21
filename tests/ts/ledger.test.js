@@ -6,19 +6,18 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { ExecutionLedger } from '../../dist/ledger.js';
-import { ActionEnvelope, PolicyEvaluationResult } from '../../dist/types.js';
 
 describe('ExecutionLedger Suite', () => {
   const secretKey = 'nymrel_hmac_secret_testing_key_2026';
 
   it('records actions and produces valid SHA-256 hash receipt', () => {
     const ledger = new ExecutionLedger({ hmacSecret: secretKey });
-    const action: ActionEnvelope = {
+    const action = {
       actionType: 'exec',
       command: 'git status',
       estimatedCostUsd: 0.001,
     };
-    const evaluation: PolicyEvaluationResult = {
+    const evaluation = {
       decision: 'ALLOW',
       allowed: true,
       reasons: ['Safe command'],
@@ -40,8 +39,8 @@ describe('ExecutionLedger Suite', () => {
 
   it('detects tampering in receipt fields', () => {
     const ledger = new ExecutionLedger({ hmacSecret: secretKey });
-    const action: ActionEnvelope = { actionType: 'fs_read', targetPath: './safe.txt' };
-    const evaluation: PolicyEvaluationResult = {
+    const action = { actionType: 'fs_read', targetPath: './safe.txt' };
+    const evaluation = {
       decision: 'ALLOW',
       allowed: true,
       reasons: ['Allowed'],
@@ -53,7 +52,7 @@ describe('ExecutionLedger Suite', () => {
     const receipt = ledger.recordAction(action, evaluation);
 
     // Tamper with decision from ALLOW to DENY
-    const tamperedReceipt = { ...receipt, decision: 'DENY' as const };
+    const tamperedReceipt = { ...receipt, decision: 'DENY' };
     const isValid = ExecutionLedger.verifyReceipt(tamperedReceipt, secretKey);
     assert.strictEqual(isValid, false, 'Tampered receipt must fail verification');
   });
@@ -78,7 +77,7 @@ describe('ExecutionLedger Suite', () => {
     assert.strictEqual(r2.prevReceiptHash, r1.receiptHash);
     assert.strictEqual(r3.prevReceiptHash, r2.receiptHash);
 
-    const history = ledger.getHistory() as any[];
+    const history = ledger.getHistory();
     const chainVerification = ExecutionLedger.verifyChain(history, secretKey);
     assert.strictEqual(chainVerification.valid, true);
 

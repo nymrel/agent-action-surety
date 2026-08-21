@@ -34,7 +34,7 @@ describe('PolicyEngine Suite', () => {
 
   it('supports wildcard capabilities (fs:* grants all fs operations)', () => {
     const engine = new PolicyEngine({
-      capabilities: ['fs:*' as any],
+      capabilities: ['fs:*'],
       allowedPaths: [process.cwd()],
     });
 

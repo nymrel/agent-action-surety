@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --test tests/ts",
+    "test": "node --test tests/ts/cli.test.js tests/ts/interceptors.test.js tests/ts/ledger.test.js tests/ts/policy.test.js tests/ts/sandbox.test.js",
     "lint": "tsc --noEmit",
     "check": "npm run lint && npm test"
   },
