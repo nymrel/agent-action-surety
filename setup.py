@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Setup script for agent-action-surety."""
 from setuptools import setup, find_packages
+import os
+
+long_description = ""
+if os.path.exists("README.md"):
+    with open("README.md", encoding="utf-8") as f:
+        long_description = f.read()
 
 setup(
     name="agent-action-surety",
     version="1.0.0",
     description="Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents.",
-    long_description=open("README.md", encoding="utf-8").read() if os_exists := __import__("os").path.exists("README.md") else "",
+    long_description=long_description,
     long_description_content_type="text/markdown",
     author="Nymrel",
     author_email="contact@nymrel.com",

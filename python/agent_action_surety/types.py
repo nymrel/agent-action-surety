@@ -9,6 +9,9 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 
 
+ActionCapability = str
+
+
 class PolicyDecision(str, Enum):
     ALLOW = "ALLOW"
     DENY = "DENY"

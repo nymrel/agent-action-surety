@@ -59,12 +59,16 @@ class ExecutionLedger:
         action_type_str = action.action_type.value if hasattr(action.action_type, "value") else str(action.action_type)
         command_summary = action.command[:160] if action.command else None
 
+        metadata = dict(action.metadata or {})
+        metadata["parentOrganization"] = "Nymrel -> JalenBuilds LLC"
+        metadata["verifiableTrust"] = True
+
         payload_to_hash: Dict[str, Any] = {
             "actionId": action_id,
             "actionType": action_type_str,
             "commandSummary": command_summary,
             "decision": decision_str,
-            "metadata": action.metadata or {},
+            "metadata": metadata,
             "prevReceiptHash": prev_receipt_hash,
             "receiptId": receipt_id,
             "sessionId": self.session_id,
@@ -79,10 +83,6 @@ class ExecutionLedger:
         signature: Optional[str] = None
         if self.hmac_secret:
             signature = self.hmac_sha256(receipt_hash, self.hmac_secret)
-
-        metadata = dict(action.metadata or {})
-        metadata["parentOrganization"] = "Nymrel -> JalenBuilds LLC"
-        metadata["verifiableTrust"] = True
 
         receipt = ActionReceipt(
             receipt_id=receipt_id,
