@@ -43,10 +43,8 @@ describe('CLI Engine Suite', () => {
       commandSummary: 'echo test',
       timestamp: 1770000000000,
       metadata: {},
-      // Compute actual hash for this payload
     };
 
-    // Use ExecutionLedger helper to calculate valid hash
     const { ExecutionLedger } = await import('../../dist/ledger.js');
     const payload = {
       actionId: fakeReceipt.actionId,
@@ -61,7 +59,7 @@ describe('CLI Engine Suite', () => {
       timestamp: fakeReceipt.timestamp,
       violationsCount: 0,
     };
-    (fakeReceipt as any).receiptHash = ExecutionLedger.sha256(ExecutionLedger.canonicalizeData(payload));
+    fakeReceipt.receiptHash = ExecutionLedger.sha256(ExecutionLedger.canonicalizeData(payload));
 
     fs.writeFileSync(tempReceiptPath, JSON.stringify(fakeReceipt, null, 2), 'utf-8');
 
