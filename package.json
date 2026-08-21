@@ -2,6 +2,7 @@
   "name": "@nymrel/agent-surety",
   "version": "1.0.0",
   "description": "Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents and autonomous tool-calling swarms.",
+  "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -37,6 +38,6 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "typescript": "5.4.5"
   }
 }
