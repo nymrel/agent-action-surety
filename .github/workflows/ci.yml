@@ -5,39 +5,63 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-action-surety-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-node:
+  node:
+    name: Node ${{ matrix.node }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node-version: [18.x, 20.x, 22.x]
+        node: [18, 20, 22, 24]
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: ${{ matrix.node-version }}
-      - name: Build TypeScript
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Install pinned TypeScript compiler
+        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Type-check and build
         run: |
-          npx --yes typescript@^5.4.5 src/*.ts --outDir dist --target ES2022 --module NodeNext --moduleResolution NodeNext
-      - name: Run Node.js Unit Tests
-        run: node --test tests/ts/*.test.js
+          npm run lint
+          npm run build
+      - name: Verify package artifacts
+        run: node -e "for (const file of ['dist/index.js','dist/index.d.ts','dist/cli.js']) { if (!require('node:fs').existsSync(file)) throw new Error('missing '+file) }"
+      - name: Run Node test suite
+        run: npm test
+      - name: Smoke-test CLI wrapper
+        run: node bin/agent-surety.js check --cmd "git status"
 
-  test-python:
+  python:
+    name: Python ${{ matrix.python }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: python
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.9", "3.11", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Run Python Unit Tests
+          python-version: ${{ matrix.python }}
+      - name: Compile Python sources
+        run: python -m compileall -q python/agent_action_surety
+      - name: Run Python unit tests
         run: python -m unittest discover -s tests/python -p "test_*.py"
