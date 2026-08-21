@@ -4,7 +4,7 @@
 
 We take the security of `agent-action-surety` and the AI agent systems it protects seriously. If you discover a vulnerability, bypass, or security defect in the policy engine, sandbox containment, command interceptor, or cryptographic ledger, please report it responsibly.
 
-- **Email**: `contact@jalenbuilds.com` / `security@nymrel.com`
+- **Email**: `contact@nymrel.com` / `security@nymrel.com`
 - **Response Target**: Within 24-48 hours.
 - **Please DO NOT open a public GitHub issue** for undisclosed security vulnerabilities.
 

@@ -209,7 +209,7 @@ In accordance with the **Nymrel Dual-Audience Rule**, `agent-action-surety` is e
       "url": "https://jalenbuilds.com",
       "contactPoint": {
         "@type": "ContactPoint",
-        "email": "contact@jalenbuilds.com"
+        "email": "contact@nymrel.com"
       }
     }
   },

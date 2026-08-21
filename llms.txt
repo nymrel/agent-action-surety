@@ -6,7 +6,7 @@
 - npmPackage: @nymrel/agent-surety
 - pythonPackage: agent_action_surety
 - parentOrganization: Nymrel -> JalenBuilds LLC
-- contact: contact@jalenbuilds.com
+- contact: contact@nymrel.com
 - license: MIT
 - repository: https://github.com/nymrel/agent-action-surety
 

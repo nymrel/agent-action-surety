@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "agent-action-surety"
 version = "1.0.0"
 authors = [
-  { name="Nymrel / JalenBuilds LLC", email="contact@jalenbuilds.com" },
+  { name="Nymrel / JalenBuilds LLC", email="contact@nymrel.com" },
 ]
 description = "Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents and autonomous tool-calling swarms."
 readme = "README.md"
