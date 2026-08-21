@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Agent Action Surety - CLI Entrypoint
+# Copyright (c) 2026 Nymrel / JalenBuilds LLC.
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if command -v node >/dev/null 2>&1; then
+  exec node "$DIR/agent-surety.js" "$@"
+elif command -v python3 >/dev/null 2>&1; then
+  exec python3 -m agent_action_surety.cli "$@"
+elif command -v python >/dev/null 2>&1; then
+  exec python -m agent_action_surety.cli "$@"
+else
+  echo "Error: Neither Node.js nor Python is available in PATH." >&2
+  exit 1
+fi

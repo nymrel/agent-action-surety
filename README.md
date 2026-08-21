@@ -1,0 +1,239 @@
+# 🛡️ Agent Action Surety (`agent-action-surety`)
+
+> **Zero-Dependency Execution Firewall, Path Sandbox, Command Interceptor, and Cryptographic Audit Ledger for AI Coding Agents and Autonomous Tool-Calling Swarms.**
+
+[![CI](https://github.com/nymrel/agent-action-surety/actions/workflows/ci.yml/badge.svg)](https://github.com/nymrel/agent-action-surety/actions)
+[![npm version](https://img.shields.io/npm/v/@nymrel/agent-surety.svg)](https://www.npmjs.com/package/@nymrel/agent-surety)
+[![Python Version](https://img.shields.io/pypi/pyversions/agent-action-surety.svg)](https://pypi.org/project/agent-action-surety/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Entity: Nymrel](https://img.shields.io/badge/Entity-Nymrel%20%7C%20JalenBuilds%20LLC-2A332E)](https://jalenbuilds.com)
+
+---
+
+## 🌟 Overview
+
+Autonomous AI agents (such as Codex, Claude, Cursor, Devin, OpenDevin, and custom LLM tool-calling loops) operate in developer and cloud environments with dangerous **ambient authority**. A single hallucination, prompt injection, or logic drift can result in catastrophic `rm -rf /`, database drops (`DROP TABLE`), accidental `git push --force origin main`, or cloud resource deletion (`gcloud projects delete`).
+
+**`agent-action-surety`** provides a complete, dual-language (**TypeScript/Node.js** + **Python**), **zero-runtime-dependency** execution firewall and policy envelope that wraps every agent tool call before execution, enforces strict containment, and logs tamper-evident cryptographic receipts.
+
+```
+  ┌─────────────────────────────────────────────────────────────┐
+  │                    Autonomous AI Agent                      │
+  │     (Codex / Claude / Cursor / OpenDevin / Custom Swarm)    │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ Tool Call Request
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │                 AGENT ACTION SURETY FIREWALL                │
+  │                                                             │
+  │  [1] Capability Gate      : Deny-by-default capability map  │
+  │  [2] Path Sandbox         : Traversal & symlink isolation   │
+  │  [3] Command Interceptor  : SQL, Shell, Git, Cloud AST/Regx │
+  │  [4] Resource Envelope    : Spend caps ($ USD) & rate limits│
+  │  [5] Cryptographic Ledger : SHA-256 Merkle chain receipts   │
+  └───────────────┬─────────────────────────────┬───────────────┘
+                  │ [DENY / INTERCEPT]          │ [ALLOW]
+                  ▼                             ▼
+       ┌────────────────────┐        ┌────────────────────┐
+       │   Blocked Action   │        │ Safe Execution Env │
+       │ (Tamper-proof log) │        │ (Signed Receipt)   │
+       └────────────────────┘        └────────────────────┘
+```
+
+---
+
+## 💎 Core Architecture & Guarantees
+
+### 1. 📦 Zero Runtime Dependencies
+- **TypeScript / Node.js Engine**: Uses **100% standard library** (`node:crypto`, `node:fs`, `node:path`, `node:child_process`, `node:readline`). No npm supply chain risk.
+- **Python Engine**: Uses **100% standard library** (`hashlib`, `hmac`, `os`, `sys`, `pathlib`, `re`, `shlex`, `subprocess`, `dataclasses`, `secrets`). No pip vulnerability exposure.
+
+### 2. 🔒 Deny-by-Default Capability System
+Actions are rejected unless explicit capabilities are granted:
+- `fs:read`, `fs:write`, `fs:delete`, `fs:*`
+- `exec:read_only`, `exec:modify`, `exec:privileged`
+- `db:query`, `db:schema_migrate`, `db:destructive`
+- `git:read`, `git:commit`, `git:push`, `git:force_push`
+- `cloud:read`, `cloud:provision`, `cloud:delete`
+- `net:http`, `net:dns`, `net:raw`
+
+### 3. 📁 Path Containment Sandbox
+- Strict workspace root bounding.
+- Defeats directory traversal (`../../etc/passwd`, `..\..\Windows\System32`, `%2e%2e%2f`).
+- Resolves real paths (`realpath`) to prevent symlink and hardlink escapes.
+- Enforces read-only root partitions vs writeable directories.
+- Default sensitive pattern protection: `.env`, `.git/config`, `.ssh/`, `.aws/`, `.gnupg/`, `/etc/shadow`.
+
+### 4. ⚡ Deep Command & SQL Interceptors
+Inspects commands via token and pattern analysis:
+- **Shell / OS**: Blocks `rm -rf /`, `rm -rf *`, `rmdir /s /q C:\`, `mkfs.*`, `dd if=/dev/zero of=/dev/sda`, fork bombs (`:(){ :|:& };:`), global `chmod -R 777 /`, remote execution pipes (`curl ... | bash`).
+- **SQL Databases**: Blocks `DROP DATABASE`, `DROP TABLE`, `TRUNCATE TABLE`, `ALTER TABLE ... DROP COLUMN`, unbounded `DELETE FROM ...` without `WHERE` or with `WHERE 1=1`.
+- **Git Repositories**: Blocks `git push --force`, `git push -f`, `git reset --hard`, `git clean -fdx`, and deletion of protected branches (`main`, `master`, `prod`, `release`).
+- **Cloud Infrastructure**: Blocks `gcloud projects delete`, `gsutil rm -r gs://*`, `aws s3 rb --force`, `aws rds delete-db-instance`, `az group delete`, `terraform destroy`, `pulumi destroy`.
+- **Kubernetes**: Blocks `kubectl delete ns`, `kubectl delete all --all`, `kubectl delete clusterrole`.
+
+### 5. 💰 Financial Spend Caps & Rate Limiting
+- **Spend Ceiling**: Enforces maximum allowable cost in USD per agent run.
+- **Token Bounds**: Restricts cumulative LLM token requests.
+- **Rate Limiting**: Sliding 60-second window protecting against recursive loops.
+
+### 6. ⛓️ Cryptographic Audit Ledger (Merkle Hash Chaining)
+Every action evaluation produces a tamper-evident **SHA-256 Execution Receipt** chained cryptographically:
+
+```
+  ┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
+  │    Receipt #1    │       │    Receipt #2    │       │    Receipt #3    │
+  │                  │       │                  │       │                  │
+  │ prev: 0000000... ├──────►│ prev: HASH(#1)   ├──────►│ prev: HASH(#2)   │
+  │ hash: 8f4a19b... │       │ hash: c3d881e... │       │ hash: 1e99a4c... │
+  │ HMAC Signature   │       │ HMAC Signature   │       │ HMAC Signature   │
+  └──────────────────┘       └──────────────────┘       └──────────────────┘
+```
+
+Any retrospective tampering with command logs, action statuses, or timestamps is immediately detected during audit verification.
+
+---
+
+## 🚀 Quickstart
+
+### Node.js / TypeScript
+
+```bash
+npm install @nymrel/agent-surety
+```
+
+```typescript
+import { PolicyEngine, wrapExecution } from '@nymrel/agent-surety';
+
+// 1. Configure Safety Envelope
+const engine = new PolicyEngine({
+  capabilities: ['fs:read', 'fs:write', 'exec:read_only'],
+  allowedPaths: ['./src', './dist'],
+  maxSpendUsd: 5.0,
+  rateLimitPerMinute: 60,
+  hmacSecret: process.env.SURETY_SECRET_KEY,
+});
+
+// 2. Wrap Agent Execution
+const result = await wrapExecution(engine, {
+  actionType: 'exec',
+  command: 'rm -rf /', // Intercepted and blocked before execution!
+  workingDir: process.cwd(),
+});
+
+if (!result.success) {
+  console.error('Firewall Blocked Action:', result.error);
+  console.log('Cryptographic Receipt Hash:', result.receipt.receiptHash);
+}
+```
+
+### Python
+
+```bash
+pip install agent-action-surety
+```
+
+```python
+from agent_action_surety import PolicyEngine, wrap_execution, ActionEnvelope
+
+# 1. Configure Safety Envelope
+engine = PolicyEngine(
+    capabilities=["fs:read", "fs:write", "exec:read_only"],
+    allowed_paths=["./src", "./dist"],
+    max_spend_usd=5.0,
+    rate_limit_per_minute=60,
+    hmac_secret="org_session_secret_key",
+)
+
+# 2. Wrap Agent Execution
+envelope = ActionEnvelope(
+    action_type="exec",
+    command="git push --force origin main",  # Intercepted and blocked!
+    working_dir=".",
+)
+
+result = wrap_execution(engine, envelope)
+
+if not result.success:
+    print("Action Blocked:", result.error)
+    print("Receipt ID:", result.receipt.receipt_id)
+    print("Merkle Hash:", result.receipt.receipt_hash)
+```
+
+---
+
+## 🛠️ CLI Tool Usage
+
+`agent-surety` provides a CLI wrapper for agent subshells and CI workflows:
+
+```bash
+# 1. Check a command before running (Dry-run)
+agent-surety check --cmd "rm -rf /"
+# Output: [SURETY FIREWALL: EXECUTION BLOCKED]
+# Reason: Root or Wildcard Recursive Deletion (CRITICAL)
+
+# 2. Execute command inside the safety envelope
+agent-surety exec --cmd "git status"
+# Output: [SURETY: SUCCESS] (Receipt: a3b819f... | Time: 12ms)
+
+# 3. Validate filesystem path against sandbox containment
+agent-surety path --target "../../etc/shadow" --write
+# Output: [SURETY PATH VALIDATION] Allowed: NO (RESTRICTED)
+
+# 4. Cryptographically verify receipt integrity
+agent-surety verify-receipt --file receipt.json --secret "my-hmac-key"
+
+# 5. Verify an entire audit ledger Merkle chain
+agent-surety verify-ledger --file audit_ledger.jsonl --secret "my-hmac-key"
+```
+
+---
+
+## 🏛️ Nymrel Machine Trust & Entity Graph
+
+In accordance with the **Nymrel Dual-Audience Rule**, `agent-action-surety` is engineered to deliver intuitive developer ergonomics for human engineers alongside verified machine trust for autonomous agents.
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "agent-action-surety",
+  "applicationCategory": "SecurityApplication",
+  "operatingSystem": "All",
+  "author": {
+    "@type": "Organization",
+    "name": "Nymrel",
+    "parentOrganization": {
+      "@type": "Organization",
+      "name": "JalenBuilds LLC",
+      "url": "https://jalenbuilds.com",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "email": "contact@jalenbuilds.com"
+      }
+    }
+  },
+  "license": "https://opensource.org/licenses/MIT",
+  "keywords": ["AI Agent Firewall", "Tool-Calling Security", "Execution Sandbox", "Cryptographic Ledger", "Nymrel"]
+}
+```
+
+---
+
+## 🧪 Testing & Verification
+
+Run the comprehensive test suites across both Node.js and Python:
+
+```bash
+# TypeScript / Node.js Test Suite (Native node:test runner)
+npm test
+
+# Python Test Suite (Native unittest runner)
+python -m unittest discover -s tests/python -p "test_*.py"
+```
+
+---
+
+## 📄 License
+
+MIT License &copy; 2026 **Nymrel / JalenBuilds LLC**. See [LICENSE](LICENSE) for details.

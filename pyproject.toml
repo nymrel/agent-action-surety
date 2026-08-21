@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-action-surety"
+version = "1.0.0"
+authors = [
+  { name="Nymrel / JalenBuilds LLC", email="contact@jalenbuilds.com" },
+]
+description = "Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents and autonomous tool-calling swarms."
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+keywords = [
+    "ai-agent",
+    "security",
+    "firewall",
+    "sandbox",
+    "interceptor",
+    "ledger",
+    "nymrel",
+    "machine-trust"
+]
+dependencies = []
+
+[project.scripts]
+agent-surety = "agent_action_surety.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/nymrel/agent-action-surety"
+"Bug Tracker" = "https://github.com/nymrel/agent-action-surety/issues"
+
+[tool.setuptools.packages.find]
+where = ["python"]

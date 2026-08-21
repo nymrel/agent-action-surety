@@ -1,0 +1,42 @@
+{
+  "name": "@nymrel/agent-surety",
+  "version": "1.0.0",
+  "description": "Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents and autonomous tool-calling swarms.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "agent-surety": "./bin/agent-surety.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test tests/ts/*.test.js",
+    "lint": "tsc --noEmit",
+    "check": "npm run lint && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nymrel/agent-action-surety.git"
+  },
+  "keywords": [
+    "ai-agent",
+    "security",
+    "execution-firewall",
+    "sandbox",
+    "command-interceptor",
+    "audit-ledger",
+    "merkle-chain",
+    "machine-trust",
+    "nymrel",
+    "jalenbuilds",
+    "zero-dependency"
+  ],
+  "author": "Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
