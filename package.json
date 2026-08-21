@@ -4,8 +4,13 @@
   "description": "Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents and autonomous tool-calling swarms.",
   "type": "module",
   "main": "dist/index.js",
-  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "agent-surety": "./bin/agent-surety.js"
   },
