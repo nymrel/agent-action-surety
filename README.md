@@ -6,7 +6,7 @@
 [![npm version](https://img.shields.io/npm/v/@nymrel/agent-surety.svg)](https://www.npmjs.com/package/@nymrel/agent-surety)
 [![Python Version](https://img.shields.io/pypi/pyversions/agent-action-surety.svg)](https://pypi.org/project/agent-action-surety/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Entity: Nymrel](https://img.shields.io/badge/Entity-Nymrel%20%7C%20JalenBuilds%20LLC-2A332E)](https://jalenbuilds.com)
+[![Entity: Nymrel](https://img.shields.io/badge/Entity-Nymrel%20%7C%20JalenBuilds%20LLC-2A332E)](https://nymrel.com)
 
 ---
 
@@ -206,7 +206,7 @@ In accordance with the **Nymrel Dual-Audience Rule**, `agent-action-surety` is e
     "parentOrganization": {
       "@type": "Organization",
       "name": "JalenBuilds LLC",
-      "url": "https://jalenbuilds.com",
+      "url": "https://nymrel.com",
       "contactPoint": {
         "@type": "ContactPoint",
         "email": "contact@nymrel.com"
