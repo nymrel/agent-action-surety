@@ -48,13 +48,21 @@ class SuretySandbox:
         if not target_path or not isinstance(target_path, str):
             return ""
 
-        # Decode percent encoding
+        # Decode up to two percent-encoding layers. The previous validation
+        # flow canonicalized the target again in downstream helpers, so this
+        # preserves double-encoded traversal protection while resolving the
+        # filesystem only once.
         decoded = target_path
-        if "%" in decoded:
+        for _ in range(2):
+            if "%" not in decoded:
+                break
             try:
-                decoded = urllib.parse.unquote(decoded)
+                next_decoded = urllib.parse.unquote(decoded)
+                if next_decoded == decoded:
+                    break
+                decoded = next_decoded
             except Exception:
-                pass
+                break
 
         # Expand user and resolve
         expanded = os.path.expanduser(decoded)
@@ -78,16 +86,45 @@ class SuretySandbox:
     def is_sensitive_path(self, target_path: str) -> bool:
         """Check if a path targets sensitive secrets or system credentials."""
         canonical = self.canonicalize_path(target_path)
+        return self._matches_denied_patterns(canonical, target_path)
+
+    def _matches_denied_patterns(self, canonical: str, raw_input: str) -> bool:
+        """Pattern-only sensitive check over an already-canonical path plus its
+        raw input. Callers must guarantee `canonical` is the canonical form of
+        `raw_input`; no filesystem work happens here."""
+        representations = [canonical, raw_input]
+        if "%" in raw_input:
+            try:
+                # Preserve the once-decoded normalized form examined by the
+                # legacy helper chain without repeating realpath work.
+                once_decoded = urllib.parse.unquote(raw_input)
+                representations.append(
+                    os.path.normpath(os.path.abspath(os.path.expanduser(once_decoded)))
+                )
+            except Exception:
+                pass
         for pattern in self.denied_patterns:
-            if pattern.search(canonical) or pattern.search(target_path):
+            if any(pattern.search(value) for value in representations):
                 return True
         return False
+
+    @staticmethod
+    def _has_multiple_uri_encoding_layers(raw_input: str) -> bool:
+        if "%" not in raw_input:
+            return False
+        once = urllib.parse.unquote(raw_input)
+        return "%" in once and urllib.parse.unquote(once) != once
 
     def is_path_contained(self, target_path: str, root_path: str) -> bool:
         """Check whether target_path is strictly contained within root_path."""
         canonical_target = self.canonicalize_path(target_path)
         canonical_root = self.canonicalize_path(root_path)
+        return self._is_canonical_path_contained(canonical_target, canonical_root)
 
+    def _is_canonical_path_contained(self, canonical_target: str, canonical_root: str) -> bool:
+        """Containment comparison over two already-canonical paths. Performs no
+        canonicalization; callers must pass canonical inputs (e.g. the
+        constructor-canonical roots and a target canonicalized once per call)."""
         if self.is_windows:
             t_low = canonical_target.lower()
             r_low = canonical_root.lower()
@@ -108,6 +145,22 @@ class SuretySandbox:
             except ValueError:
                 return False
 
+    def _validates_sensitive_path(self, canonical: str, raw_input: str) -> bool:
+        """Use the base fast path unless a subclass or instance replaced the
+        public security hook, in which case preserve its legacy authority."""
+        method = self.is_sensitive_path
+        if getattr(method, "__func__", None) is not SuretySandbox.is_sensitive_path:
+            return method(raw_input) or method(canonical)
+        return self._matches_denied_patterns(canonical, raw_input)
+
+    def _validates_canonical_containment(
+        self, canonical_target: str, canonical_root: str
+    ) -> bool:
+        method = self.is_path_contained
+        if getattr(method, "__func__", None) is not SuretySandbox.is_path_contained:
+            return method(canonical_target, canonical_root)
+        return self._is_canonical_path_contained(canonical_target, canonical_root)
+
     def validate_path(
         self, target_path: str, is_write: bool = False
     ) -> Tuple[bool, str, bool, Optional[str]]:
@@ -118,10 +171,17 @@ class SuretySandbox:
         if not target_path or not isinstance(target_path, str):
             return False, "", False, "Empty or invalid path provided."
 
+        # Canonicalize exactly once per validation call; every stage below
+        # reuses this value and the constructor-canonical roots instead of
+        # re-resolving.
+        canonical = self.canonicalize_path(target_path)
+
         # Traversal pattern check
         if ".." in target_path or "%2e%2e" in target_path.lower():
-            canonical = self.canonicalize_path(target_path)
-            if not any(self.is_path_contained(canonical, root) for root in self.workspace_roots):
+            if not any(
+                self._validates_canonical_containment(canonical, root)
+                for root in self.workspace_roots
+            ):
                 return (
                     False,
                     canonical,
@@ -129,10 +189,8 @@ class SuretySandbox:
                     f'Path traversal detected: "{target_path}" resolves outside configured workspace roots.',
                 )
 
-        canonical = self.canonicalize_path(target_path)
-
-        # 1. Check sensitive path deny-list
-        if self.is_sensitive_path(target_path) or self.is_sensitive_path(canonical):
+        # 1. Check sensitive path deny-list (raw input + canonical form)
+        if self._validates_sensitive_path(canonical, target_path):
             return (
                 False,
                 canonical,
@@ -140,8 +198,22 @@ class SuretySandbox:
                 f'Access to sensitive path blocked by safety policy: "{target_path}".',
             )
 
+        # A once-decoded path can name a different existing symlink/junction
+        # than its fully decoded form. Reject that ambiguous class instead of
+        # repeating filesystem resolution or weakening legacy checks.
+        if self._has_multiple_uri_encoding_layers(target_path):
+            return (
+                False,
+                canonical,
+                False,
+                f'Multi-layer URI encoding is not allowed in sandbox paths: "{target_path}".',
+            )
+
         # 2. Check workspace containment
-        if not any(self.is_path_contained(canonical, root) for root in self.workspace_roots):
+        if not any(
+            self._validates_canonical_containment(canonical, root)
+            for root in self.workspace_roots
+        ):
             return (
                 False,
                 canonical,
@@ -151,7 +223,8 @@ class SuretySandbox:
 
         # 3. Check read-only constraints
         is_read_only = any(
-            self.is_path_contained(canonical, ro_root) for ro_root in self.read_only_roots
+            self._validates_canonical_containment(canonical, ro_root)
+            for ro_root in self.read_only_roots
         )
 
         if is_write and is_read_only:

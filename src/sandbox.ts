@@ -63,14 +63,20 @@ export class SuretySandbox {
       return '';
     }
 
-    // Decode URI encoding if present (e.g. %2e%2e%2f)
+    // Decode up to two URI-encoding layers. The previous validation flow
+    // canonicalized the target again in downstream helpers, so retaining the
+    // second decode here preserves double-encoded traversal protection while
+    // doing filesystem resolution only once.
     let decoded = targetPath;
-    try {
-      if (decoded.includes('%')) {
-        decoded = decodeURIComponent(decoded);
+    for (let pass = 0; pass < 2 && decoded.includes('%'); pass += 1) {
+      try {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      } catch {
+        // Keep the last valid form if decoding fails.
+        break;
       }
-    } catch {
-      // Keep original if decoding fails
     }
 
     // Resolve absolute path
@@ -103,12 +109,41 @@ export class SuretySandbox {
    */
   public isSensitivePath(targetPath: string): boolean {
     const canonical = this.canonicalizePath(targetPath);
+    return this.matchesDeniedPatterns(canonical, targetPath);
+  }
+
+  /**
+   * Pattern-only sensitive check over an already-canonical path plus its raw
+   * input. Callers must guarantee `canonical` is the canonical form of
+   * `rawInput`; no filesystem work happens here.
+   */
+  private matchesDeniedPatterns(canonical: string, rawInput: string): boolean {
+    const representations = [canonical, rawInput];
+    if (rawInput.includes('%')) {
+      try {
+        // Preserve the once-decoded normalized form examined by the legacy
+        // helper chain, without repeating exists/realpath filesystem work.
+        representations.push(path.normalize(path.resolve(decodeURIComponent(rawInput))));
+      } catch {
+        // Malformed encoding remains represented by the raw input.
+      }
+    }
     for (const pattern of this.deniedPatterns) {
-      if (pattern.test(canonical) || pattern.test(targetPath)) {
+      if (representations.some((value) => pattern.test(value))) {
         return true;
       }
     }
     return false;
+  }
+
+  private hasMultipleUriEncodingLayers(rawInput: string): boolean {
+    if (!rawInput.includes('%')) return false;
+    try {
+      const once = decodeURIComponent(rawInput);
+      return once.includes('%') && decodeURIComponent(once) !== once;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -117,7 +152,15 @@ export class SuretySandbox {
   public isPathContained(targetPath: string, rootPath: string): boolean {
     const canonicalTarget = this.canonicalizePath(targetPath);
     const canonicalRoot = this.canonicalizePath(rootPath);
+    return this.isCanonicalPathContained(canonicalTarget, canonicalRoot);
+  }
 
+  /**
+   * Containment comparison over two already-canonical paths. Performs no
+   * canonicalization; callers must pass canonical inputs (e.g. the
+   * constructor-canonical roots and a target canonicalized once per call).
+   */
+  private isCanonicalPathContained(canonicalTarget: string, canonicalRoot: string): boolean {
     if (this.isWindows) {
       const targetLower = canonicalTarget.toLowerCase();
       const rootLower = canonicalRoot.toLowerCase();
@@ -130,6 +173,22 @@ export class SuretySandbox {
       const relative = path.relative(canonicalRoot, canonicalTarget);
       return !relative.startsWith('..') && !path.isAbsolute(relative);
     }
+  }
+
+  /** Preserve subclass/instance policy overrides while keeping the base class
+   * on the single-canonicalization fast path. */
+  private validatesSensitivePath(canonical: string, rawInput: string): boolean {
+    if (this.isSensitivePath !== SuretySandbox.prototype.isSensitivePath) {
+      return this.isSensitivePath(rawInput) || this.isSensitivePath(canonical);
+    }
+    return this.matchesDeniedPatterns(canonical, rawInput);
+  }
+
+  private validatesCanonicalContainment(canonicalTarget: string, canonicalRoot: string): boolean {
+    if (this.isPathContained !== SuretySandbox.prototype.isPathContained) {
+      return this.isPathContained(canonicalTarget, canonicalRoot);
+    }
+    return this.isCanonicalPathContained(canonicalTarget, canonicalRoot);
   }
 
   /**
@@ -145,12 +204,15 @@ export class SuretySandbox {
       };
     }
 
+    // Canonicalize exactly once per validation call; every stage below reuses
+    // this value and the constructor-canonical roots instead of re-resolving.
+    const canonical = this.canonicalizePath(targetPath);
+
     // Traversal pattern check on raw input
     if (targetPath.includes('..') || targetPath.includes('%2e%2e')) {
-      const canonical = this.canonicalizePath(targetPath);
       let isInsideAnyRoot = false;
       for (const root of this.workspaceRoots) {
-        if (this.isPathContained(canonical, root)) {
+        if (this.validatesCanonicalContainment(canonical, root)) {
           isInsideAnyRoot = true;
           break;
         }
@@ -165,10 +227,8 @@ export class SuretySandbox {
       }
     }
 
-    const canonical = this.canonicalizePath(targetPath);
-
-    // 1. Check sensitive path deny-list
-    if (this.isSensitivePath(targetPath) || this.isSensitivePath(canonical)) {
+    // 1. Check sensitive path deny-list (raw input + canonical form)
+    if (this.validatesSensitivePath(canonical, targetPath)) {
       return {
         allowed: false,
         normalizedPath: canonical,
@@ -177,10 +237,22 @@ export class SuretySandbox {
       };
     }
 
+    // A once-decoded path can name a different existing symlink/junction than
+    // its fully decoded form. Reject the ambiguous class instead of performing
+    // a second filesystem resolution or silently weakening legacy checks.
+    if (this.hasMultipleUriEncodingLayers(targetPath)) {
+      return {
+        allowed: false,
+        normalizedPath: canonical,
+        isReadOnly: false,
+        reason: `Multi-layer URI encoding is not allowed in sandbox paths: "${targetPath}".`,
+      };
+    }
+
     // 2. Check workspace containment
     let isContained = false;
     for (const root of this.workspaceRoots) {
-      if (this.isPathContained(canonical, root)) {
+      if (this.validatesCanonicalContainment(canonical, root)) {
         isContained = true;
         break;
       }
@@ -198,7 +270,7 @@ export class SuretySandbox {
     // 3. Check read-only constraints
     let isReadOnly = false;
     for (const roRoot of this.readOnlyRoots) {
-      if (this.isPathContained(canonical, roRoot)) {
+      if (this.validatesCanonicalContainment(canonical, roRoot)) {
         isReadOnly = true;
         break;
       }
