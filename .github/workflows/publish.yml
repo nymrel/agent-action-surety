@@ -1,171 +1,124 @@
-name: Release & Publish (npm + PyPI)
+name: Release
 
 on:
   push:
-    branches: [main, master]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main, master]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test-node:
-    name: Test Node.js (${{ matrix.node-version }})
+  build:
+    name: Build and verify release artifacts
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-        continue-on-error: true
+          node-version: '24.20.0'
+          package-manager-cache: false
 
-      - name: Install dependencies
-        run: npm ci || npm install
+      - name: Install locked dependencies
+        run: npm ci
 
-      - name: Build bundle
-        run: npm run build
+      - name: Validate Node package
+        run: npm run check
 
-      - name: Run Node.js test suite
-        run: npm test
-
-  test-python:
-    name: Test Python (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.11', '3.12']
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-        continue-on-error: true
+          python-version: '3.14'
 
-      - name: Install dependencies & build tools
+      - name: Verify tag and package versions agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: >-
+          python -c "import json, os, pathlib, re;
+          npm=json.loads(pathlib.Path('package.json').read_text(encoding='utf-8'))['version'];
+          py=re.search(r'^version = \"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(encoding='utf-8'), re.MULTILINE).group(1);
+          tag=os.environ['GITHUB_REF_NAME'];
+          assert npm == py == tag.removeprefix('v'), f'version mismatch: npm={npm}, python={py}, tag={tag}'"
+
+      - name: Build npm tarball
         run: |
-          python -m pip install --upgrade pip setuptools wheel pytest
-          pip install -e . || pip install . || true
+          mkdir -p release/npm
+          npm pack --pack-destination release/npm
 
-      - name: Run Python unit tests
-        env:
-          PYTHONPATH: ./:./python:./src
-        run: python -m unittest discover -s tests/python -p 'test_*.py'
+      - name: Build and check Python distributions
+        run: |
+          python -m pip install --disable-pip-version-check build==1.6.0 twine==7.0.0
+          python -m build --outdir release/python
+          python -m twine check release/python/*
 
-  security-audit:
-    name: Security & DevSecOps Audit
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+      - name: Upload npm artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          node-version: 20.x
+          name: npm-package
+          path: release/npm/*.tgz
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: NPM Security Audit
-        run: |
-          npm audit --audit-level=high || echo "::warning ::NPM audit reported potential high-severity advisories"
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+      - name: Upload Python artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          python-version: '3.11'
-
-      - name: Install Bandit & Pip-Audit
-        run: pip install --upgrade bandit pip-audit
-
-      - name: Bandit SAST Security Scan
-        run: |
-          bandit -r . -x ./node_modules,./dist,./.git,./test,./tests,./python/tests,./tests/python -ll -ii || echo "::warning ::Bandit flagged potential security issues"
-
-      - name: Pip-Audit Dependency Vulnerability Scan
-        run: |
-          pip-audit || echo "::warning ::Pip-audit check completed"
+          name: python-package
+          path: release/python/*
+          if-no-files-found: error
+          retention-days: 1
 
   publish-npm:
-    name: Publish to npm (OIDC Provenance)
-    needs: [test-node, test-python, security-audit]
+    name: Publish npm package with OIDC
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+      - name: Download verified npm artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          node-version: 20.x
-          registry-url: 'https://registry.npmjs.org'
+          name: npm-package
+          path: release/npm
 
-      - name: Install dependencies
-        run: npm ci || npm install
+      - name: Set up Node.js for trusted publishing
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.20.0'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
-      - name: Prepublish validation (build & test)
-        run: npm run prepublishOnly
-
-      - name: Publish package to npm with OIDC provenance
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+      - name: Publish to npm
+        run: npm publish release/npm/*.tgz --access public
 
   publish-pypi:
-    name: Publish to PyPI (OIDC Trusted Publishing)
-    needs: [test-node, test-python, security-audit]
+    name: Publish Python package with OIDC
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     environment:
       name: pypi
       url: https://pypi.org/p/agent-action-surety
+    permissions:
+      id-token: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Download verified Python artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          python-version: '3.11'
+          name: python-package
+          path: dist
 
-      - name: Install packaging tools & twine
-        run: pip install --upgrade pip build twine
-
-      - name: Build source distribution and binary wheel
-        run: python -m build
-
-      - name: Validate distribution integrity
-        run: twine check dist/*
-
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
-          verbose: true
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

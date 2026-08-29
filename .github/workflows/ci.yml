@@ -1,43 +1,100 @@
-name: Agent Action Surety CI
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-node:
+  node:
+    name: Node.js ${{ matrix.node-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        node-version: [18.x, 20.x, 22.x]
+        include:
+          - os: ubuntu-latest
+            node-version: '18'
+          - os: ubuntu-latest
+            node-version: '20'
+          - os: ubuntu-latest
+            node-version: '22'
+          - os: ubuntu-latest
+            node-version: '24'
+          - os: windows-latest
+            node-version: '24'
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Build TypeScript
-        run: |
-          npx --yes typescript@^5.4.5 src/*.ts --outDir dist --target ES2022 --module NodeNext --moduleResolution NodeNext
-      - name: Run Node.js Unit Tests
-        run: node --test tests/ts/*.test.js
+          cache: npm
 
-  test-python:
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck, build, and test current source
+        run: npm run check
+
+      - name: Audit locked dependencies
+        if: matrix.node-version == '24' && runner.os == 'Linux'
+        run: npm audit --audit-level=high
+
+      - name: Build and smoke-test the installed npm package
+        if: matrix.node-version == '24' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          package_tarball="$(npm pack --silent)"
+          npm exec --yes --package "./${package_tarball}" -- agent-surety --help
+
+  python:
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python-version: '3.9'
+          - os: ubuntu-latest
+            python-version: '3.10'
+          - os: ubuntu-latest
+            python-version: '3.11'
+          - os: ubuntu-latest
+            python-version: '3.12'
+          - os: ubuntu-latest
+            python-version: '3.13'
+          - os: ubuntu-latest
+            python-version: '3.14'
+          - os: windows-latest
+            python-version: '3.14'
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run Python Unit Tests
-        run: python -m unittest discover -s tests/python -p "test_*.py"
+
+      - name: Compile Python package
+        run: python -m compileall -q python/agent_action_surety
+
+      - name: Run Python unit tests from current source
+        env:
+          PYTHONPATH: python
+        run: python -m unittest discover -s tests/python -p 'test_*.py'

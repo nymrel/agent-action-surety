@@ -5,9 +5,16 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { runCli } from '../../dist/cli.js';
+import {
+  parseCommandArgv,
+  PolicyEngine,
+  wrapExecution,
+} from '../../dist/index.js';
 
 describe('CLI Engine Suite', () => {
   it('returns code 0 for safe check command', async () => {
@@ -18,6 +25,27 @@ describe('CLI Engine Suite', () => {
   it('returns code 1 for dangerous check command', async () => {
     const code = await runCli(['check', '--cmd', 'rm -rf /']);
     assert.strictEqual(code, 1);
+  });
+
+  it('returns code 1 when check receives an unparseable command', async () => {
+    const code = await runCli(['check', '--cmd', 'tool "unterminated']);
+    assert.strictEqual(code, 1);
+  });
+
+  it('ships an executable compiled CLI instead of the legacy JavaScript wrapper', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.resolve('package.json'), 'utf8')
+    );
+    assert.strictEqual(manifest.bin['agent-surety'], './dist/cli.js');
+    assert.strictEqual(manifest.files.includes('bin'), false);
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('dist/cli.js'), '--help'],
+      { encoding: 'utf8' }
+    );
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(result.stdout, /AGENT ACTION SURETY/);
   });
 
   it('validates paths within sandbox via CLI', async () => {
@@ -71,5 +99,114 @@ describe('CLI Engine Suite', () => {
         fs.unlinkSync(tempReceiptPath);
       }
     }
+  });
+
+  it('parses the portable argv contract without changing Windows paths', () => {
+    assert.deepStrictEqual(
+      parseCommandArgv(`tool "two words" 'three words' C:\\path ""`),
+      ['tool', 'two words', 'three words', 'C:\\path', '']
+    );
+    assert.deepStrictEqual(
+      parseCommandArgv(`tool "quote: \\" and slash: \\\\"`),
+      ['tool', 'quote: " and slash: \\']
+    );
+  });
+
+  it('rejects malformed, empty, oversized, and controlled command strings', () => {
+    assert.throws(() => parseCommandArgv('   \t\r\n'), /include an executable/i);
+    assert.throws(() => parseCommandArgv('""'), /must not be empty/i);
+    assert.throws(() => parseCommandArgv('tool "unterminated'), /unterminated/i);
+    assert.throws(() => parseCommandArgv('tool\u0000arg'), /control character/i);
+    assert.throws(() => parseCommandArgv(`tool ${'x'.repeat(32_768)}`), /safety limit/i);
+  });
+
+  it('does not interpret a chained command through a shell', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'surety-no-shell-'));
+    const marker = path.join(tempDir, 'must-not-exist.txt');
+    const firstScript = `process.stdout.write('surety-ok')`;
+    const secondScript = `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'owned')`;
+    const command = [
+      JSON.stringify(process.execPath),
+      '-e',
+      JSON.stringify(firstScript),
+      '&&',
+      JSON.stringify(process.execPath),
+      '-e',
+      JSON.stringify(secondScript),
+    ].join(' ');
+    const engine = new PolicyEngine({
+      capabilities: ['exec:modify'],
+      allowedPaths: [tempDir],
+    });
+
+    try {
+      const result = await wrapExecution(engine, {
+        actionType: 'exec',
+        command,
+        workingDir: tempDir,
+      });
+
+      assert.strictEqual(result.evaluation.allowed, true);
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.exitCode, 0);
+      assert.strictEqual(result.output, 'surety-ok');
+      assert.strictEqual(fs.existsSync(marker), false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('contains a chain after a policy-approved read-only prefix', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'surety-read-only-'));
+    const marker = path.join(tempDir, 'must-not-exist.txt');
+    const writer = `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'owned')`;
+    const command = [
+      'node -v',
+      '&&',
+      JSON.stringify(process.execPath),
+      '-e',
+      JSON.stringify(writer),
+    ].join(' ');
+    const engine = new PolicyEngine({
+      capabilities: ['exec:read_only'],
+      allowedPaths: [tempDir],
+    });
+
+    try {
+      const result = await wrapExecution(engine, {
+        actionType: 'exec',
+        command,
+        workingDir: tempDir,
+      });
+
+      assert.strictEqual(result.evaluation.allowed, true);
+      assert.deepStrictEqual(result.evaluation.capabilitiesRequired, ['exec:read_only']);
+      assert.strictEqual(result.success, true);
+      assert.match(String(result.output), /^v\d+/);
+      assert.strictEqual(fs.existsSync(marker), false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('records a DENY before policy or custom execution on parse failure', async () => {
+    const engine = new PolicyEngine({ capabilities: ['exec:modify'] });
+    let executorCalled = false;
+    const result = await wrapExecution(
+      engine,
+      { actionType: 'exec', command: 'tool "unterminated' },
+      undefined,
+      () => {
+        executorCalled = true;
+        return 'unexpected';
+      }
+    );
+
+    assert.strictEqual(executorCalled, false);
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.evaluation.allowed, false);
+    assert.strictEqual(result.evaluation.decision, 'DENY');
+    assert.strictEqual(result.receipt.decision, 'DENY');
+    assert.match(result.error || '', /denied by surety command parser/i);
   });
 });
