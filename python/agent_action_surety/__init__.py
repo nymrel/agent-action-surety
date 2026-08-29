@@ -245,16 +245,18 @@ def wrap_execution(
                 shell=False,
                 cwd=cwd,
                 capture_output=True,
-                text=True,
+                text=False,
                 timeout=30,
             )
+            stdout = (proc.stdout or b"").decode("utf-8", errors="replace")
+            stderr = (proc.stderr or b"").decode("utf-8", errors="replace")
             duration_ms = int((time.time() - start_time) * 1000)
             return ExecutionResult(
                 success=proc.returncode == 0,
                 evaluation=evaluation,
                 receipt=receipt,
-                output=proc.stdout,
-                error=proc.stderr if proc.returncode != 0 else None,
+                output=stdout,
+                error=stderr if proc.returncode != 0 else None,
                 exit_code=proc.returncode,
                 execution_time_ms=duration_ms,
             )
