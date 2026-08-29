@@ -172,6 +172,45 @@ class TestCli(unittest.TestCase):
             self.assertFalse(result.success)
             self.assertFalse(os.path.exists(marker))
 
+    def test_wrap_execution_decodes_child_bytes_without_locale_failures(self):
+        engine = PolicyEngine(capabilities=["exec:modify"])
+        success_script = (
+            "import sys; "
+            "sys.stdout.buffer.write('surety-✓'.encode('utf-8'))"
+        )
+        success = wrap_execution(
+            engine,
+            ActionEnvelope(
+                action_type="exec",
+                command=" ".join(
+                    (json.dumps(sys.executable), "-c", json.dumps(success_script))
+                ),
+            ),
+        )
+
+        self.assertTrue(success.success)
+        self.assertEqual(success.exit_code, 0)
+        self.assertEqual(success.output, "surety-✓")
+
+        failure_script = (
+            "import sys; "
+            "sys.stderr.buffer.write(bytes([255]) + b'broken'); "
+            "sys.exit(7)"
+        )
+        failure = wrap_execution(
+            engine,
+            ActionEnvelope(
+                action_type="exec",
+                command=" ".join(
+                    (json.dumps(sys.executable), "-c", json.dumps(failure_script))
+                ),
+            ),
+        )
+
+        self.assertFalse(failure.success)
+        self.assertEqual(failure.exit_code, 7)
+        self.assertEqual(failure.error, "�broken")
+
     def test_parse_failure_records_deny_before_custom_execution(self):
         engine = PolicyEngine(capabilities=["exec:modify"])
         executor_called = []
