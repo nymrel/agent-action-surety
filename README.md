@@ -46,7 +46,7 @@ Autonomous AI agents (such as Codex, Claude, Cursor, Devin, OpenDevin, and custo
 
 ### 1. 📦 Zero Runtime Dependencies
 - **TypeScript / Node.js Engine**: Uses **100% standard library** (`node:crypto`, `node:fs`, `node:path`, `node:child_process`, `node:readline`). No npm supply chain risk.
-- **Python Engine**: Uses **100% standard library** (`hashlib`, `hmac`, `os`, `sys`, `pathlib`, `re`, `shlex`, `subprocess`, `dataclasses`, `secrets`). No pip vulnerability exposure.
+- **Python Engine**: Uses **100% standard library** (`hashlib`, `hmac`, `os`, `sys`, `pathlib`, `re`, `subprocess`, `dataclasses`, `secrets`). No pip runtime dependency exposure.
 
 ### 2. 🔒 Deny-by-Default Capability System
 Actions are rejected unless explicit capabilities are granted:
@@ -187,6 +187,33 @@ agent-surety verify-receipt --file receipt.json --secret "my-hmac-key"
 agent-surety verify-ledger --file audit_ledger.jsonl --secret "my-hmac-key"
 ```
 
+### Default execution contract
+
+The built-in Node and Python executors never pass the command string to an OS
+shell. They first convert it to one executable plus an argument vector, record a
+`DENY` receipt if parsing fails, and then use `execFile` (Node) or
+`subprocess.run(..., shell=False)` (Python). A command such as
+`echo safe && mutate` therefore targets only `echo` as the executable; `&&` and
+the remaining text are literal arguments and never launch `mutate`.
+
+The portable parser has the same contract in both runtimes:
+
+- commands are limited to 32,768 Unicode characters;
+- ASCII whitespace separates arguments;
+- single and double quotes group arguments and are removed;
+- inside double quotes, `\"` and `\\` escape a quote or backslash;
+- backslashes outside double quotes stay literal, including Windows paths;
+- empty quoted arguments are preserved; and
+- malformed quotes, empty executables, NUL bytes, and other control characters
+  fail closed before policy evaluation or custom execution.
+
+Shell operators, redirection, glob expansion, and command substitution are not
+interpreted by the default executor. Explicitly running a shell executable (for
+example, `sh -c` or `cmd.exe /c`) or supplying a custom executor opts back into
+that executor's semantics and should be protected by a correspondingly strict
+policy. Surety remains an application safety gate, not a replacement for
+least-privilege OS credentials, process isolation, or containers.
+
 ---
 
 ## 🏛️ Nymrel Machine Trust & Entity Graph
@@ -226,11 +253,15 @@ Run the comprehensive test suites across both Node.js and Python:
 
 ```bash
 # TypeScript / Node.js Test Suite (Native node:test runner)
-npm test
+npm ci
+npm run check
 
 # Python Test Suite (Native unittest runner)
-python -m unittest discover -s tests/python -p "test_*.py"
+PYTHONPATH=python python -m unittest discover -s tests/python -p "test_*.py"
 ```
+
+The hosted compatibility matrix covers Node.js 18, 20, 22, and 24 plus Python
+3.9 through 3.14. The package has no runtime dependencies in either ecosystem.
 
 ---
 

@@ -23,6 +23,113 @@ export { SuretySandbox } from './sandbox.js';
 export { CommandInterceptor } from './interceptors.js';
 export { ExecutionLedger } from './ledger.js';
 
+const MAX_COMMAND_CHARACTERS = 32_768;
+const ASCII_WHITESPACE = new Set([' ', '\t', '\n', '\r', '\f', '\v']);
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Convert the portable command-string API into one executable plus argv.
+ *
+ * This is deliberately smaller than a shell grammar: ASCII whitespace
+ * separates arguments, single and double quotes group text, and only `\"` and
+ * `\\` are escapes inside double quotes. Backslashes outside double quotes are
+ * literal so Windows paths survive unchanged. The returned argv must be passed
+ * to a no-shell process API such as execFile or subprocess.run(shell=False).
+ */
+export function parseCommandArgv(command: string): string[] {
+  const characters = Array.from(command);
+  if (characters.length > MAX_COMMAND_CHARACTERS) {
+    throw new Error(
+      `Command exceeds the ${MAX_COMMAND_CHARACTERS}-character safety limit.`
+    );
+  }
+
+  const argv: string[] = [];
+  let current = '';
+  let quote: "'" | '"' | null = null;
+  let tokenStarted = false;
+
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    const codePoint = character.codePointAt(0)!;
+    const isWhitespace = ASCII_WHITESPACE.has(character);
+    const isControl =
+      codePoint <= 0x1f ||
+      codePoint === 0x7f ||
+      (codePoint >= 0x80 && codePoint <= 0x9f);
+
+    if (isControl && !isWhitespace) {
+      throw new Error(
+        `Command contains a disallowed control character (U+${codePoint
+          .toString(16)
+          .toUpperCase()
+          .padStart(4, '0')}).`
+      );
+    }
+
+    if (quote === null) {
+      if (isWhitespace) {
+        if (tokenStarted) {
+          argv.push(current);
+          current = '';
+          tokenStarted = false;
+        }
+        continue;
+      }
+
+      if (character === "'" || character === '"') {
+        quote = character;
+        tokenStarted = true;
+        continue;
+      }
+
+      current += character;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (character === quote) {
+      quote = null;
+      continue;
+    }
+
+    if (
+      quote === '"' &&
+      character === '\\' &&
+      index + 1 < characters.length &&
+      (characters[index + 1] === '"' || characters[index + 1] === '\\')
+    ) {
+      current += characters[index + 1];
+      tokenStarted = true;
+      index += 1;
+      continue;
+    }
+
+    current += character;
+    tokenStarted = true;
+  }
+
+  if (quote !== null) {
+    throw new Error('Command contains an unterminated quoted argument.');
+  }
+
+  if (tokenStarted) {
+    argv.push(current);
+  }
+
+  if (argv.length === 0) {
+    throw new Error('Command must include an executable.');
+  }
+  if (argv[0].length === 0) {
+    throw new Error('Command executable must not be empty.');
+  }
+
+  return argv;
+}
+
 /**
  * Quick evaluation of an action against a policy config or engine.
  */
@@ -69,6 +176,34 @@ export async function wrapExecution<T = unknown>(
   });
 
   const startTime = Date.now();
+  let commandArgv: string[] | undefined;
+
+  if (action.actionType === 'exec') {
+    try {
+      commandArgv = parseCommandArgv(action.command || '');
+    } catch (error: unknown) {
+      const evaluation: PolicyEvaluationResult = {
+        decision: 'DENY',
+        allowed: false,
+        reasons: [`Command parsing failed closed: ${errorMessage(error)}`],
+        violations: [],
+        capabilitiesRequired: [],
+        spendApprovedUsd: 0,
+        tokensApproved: 0,
+        timestamp: action.timestamp || Date.now(),
+      };
+      const receipt = activeLedger.recordAction(action, evaluation);
+      return {
+        success: false,
+        evaluation,
+        receipt,
+        error: `Action denied by surety command parser: ${errorMessage(error)}`,
+        exitCode: 1,
+        executionTimeMs: Date.now() - startTime,
+      };
+    }
+  }
+
   const evaluation = engine.evaluate(action);
   const receipt = activeLedger.recordAction(action, evaluation);
 
@@ -93,24 +228,31 @@ export async function wrapExecution<T = unknown>(
         output,
         executionTimeMs: Date.now() - startTime,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
         evaluation,
         receipt,
-        error: err?.message || String(err),
+        error: errorMessage(err),
         executionTimeMs: Date.now() - startTime,
       };
     }
   }
 
-  // Default shell command execution if action is 'exec' and command exists
-  if (action.actionType === 'exec' && action.command) {
+  // Default execution always uses the argv parsed before policy evaluation.
+  if (action.actionType === 'exec' && commandArgv) {
     return new Promise((resolve) => {
       const cwd = action.workingDir || process.cwd();
-      child_process.exec(
-        action.command!,
-        { cwd, timeout: 30_000, maxBuffer: 10 * 1024 * 1024 },
+      child_process.execFile(
+        commandArgv[0],
+        commandArgv.slice(1),
+        {
+          cwd,
+          timeout: 30_000,
+          maxBuffer: 10 * 1024 * 1024,
+          windowsHide: true,
+          encoding: 'utf8',
+        },
         (error, stdout, stderr) => {
           const duration = Date.now() - startTime;
           if (error) {
@@ -120,7 +262,7 @@ export async function wrapExecution<T = unknown>(
               receipt,
               output: stdout as unknown as T,
               error: stderr || error.message,
-              exitCode: error.code || 1,
+              exitCode: typeof error.code === 'number' ? error.code : 1,
               executionTimeMs: duration,
             });
           } else {

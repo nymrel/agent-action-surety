@@ -1,19 +1,26 @@
 {
   "name": "@nymrel/agent-surety",
   "version": "1.0.0",
+  "type": "module",
   "description": "Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents and autonomous tool-calling swarms.",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "bin": {
-    "agent-surety": "./bin/agent-surety.js"
+    "agent-surety": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --test tests/ts/cli.test.js tests/ts/interceptors.test.js tests/ts/ledger.test.js tests/ts/policy.test.js tests/ts/sandbox.test.js",
+    "test:unit": "node --test tests/ts/cli.test.js tests/ts/interceptors.test.js tests/ts/ledger.test.js tests/ts/policy.test.js tests/ts/sandbox.test.js",
+    "test": "npm run build && npm run test:unit",
     "lint": "tsc --noEmit",
     "check": "npm run lint && npm test",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run check"
   },
   "repository": {
     "type": "git",
@@ -38,7 +45,8 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "@types/node": "18.19.130",
+    "typescript": "7.0.2"
   },
   "publishConfig": {
     "access": "public"

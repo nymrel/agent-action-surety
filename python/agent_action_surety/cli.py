@@ -101,8 +101,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "check":
         action = ActionEnvelope(action_type="exec", command=args.cmd)
-        evaluation = engine.evaluate(action)
-        receipt = ledger.record_action(action, evaluation)
+        from . import wrap_execution
+
+        result = wrap_execution(
+            engine,
+            action,
+            ledger=ledger,
+            executor=lambda _action, _evaluation: None,
+        )
+        evaluation = result.evaluation
+        receipt = result.receipt
 
         if as_json:
             print(json.dumps({"evaluation": evaluation.to_dict(), "receipt": receipt.to_dict()}, indent=2))

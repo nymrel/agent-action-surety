@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Agent Action Surety - CLI Engine
  * Command line firewall wrapper and policy validator.
@@ -7,6 +8,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { PolicyEngine } from './policy.js';
 import { ExecutionLedger } from './ledger.js';
 import { wrapExecution } from './index.js';
@@ -123,8 +125,13 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<nu
     }
 
     const action: ActionEnvelope = { actionType: 'exec', command: cmdStr };
-    const evaluation = engine.evaluate(action);
-    const receipt = ledger.recordAction(action, evaluation);
+    const result = await wrapExecution(
+      engine,
+      action,
+      ledger,
+      () => undefined
+    );
+    const { evaluation, receipt } = result;
 
     if (asJson) {
       console.log(JSON.stringify({ evaluation, receipt }, null, 2));
@@ -273,4 +280,21 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<nu
 
   console.error(`Unknown command "${command}". Use --help for usage.`);
   return 1;
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
+  runCli().then(
+    (exitCode) => {
+      process.exitCode = exitCode;
+    },
+    (error: unknown) => {
+      console.error(
+        `Fatal CLI error: ${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exitCode = 1;
+    }
+  );
 }
