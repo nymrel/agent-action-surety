@@ -173,7 +173,7 @@ agent-surety check --cmd "rm -rf /"
 # Reason: Root or Wildcard Recursive Deletion (CRITICAL)
 
 # 2. Execute command inside the safety envelope
-agent-surety exec --cmd "git status"
+agent-surety exec --cmd "node --version"
 # Output: [SURETY: SUCCESS] (Receipt: a3b819f... | Time: 12ms)
 
 # 3. Validate filesystem path against sandbox containment
@@ -213,6 +213,19 @@ example, `sh -c` or `cmd.exe /c`) or supplying a custom executor opts back into
 that executor's semantics and should be protected by a correspondingly strict
 policy. Surety remains an application safety gate, not a replacement for
 least-privilege OS credentials, process isolation, or containers.
+
+`exec:read_only` is deliberately conservative about tools that can launch
+helpers. Ripgrep is eligible only when `--no-config` is its first argument and
+the command excludes preprocessing, compressed-search, and hostname-helper
+modes. Git commands require `exec:modify` in addition to the applicable Git
+capability because aliases, external diff/textconv programs, fsmonitor hooks,
+and pagers can execute code even when a subcommand is named `status`, `log`, or
+`diff`. Commands containing shell composition or substitution syntax also
+require `exec:modify`, even when their first executable is normally read-only.
+Runtime launchers such as npm and Python are not treated as read-only version
+checks because environment-driven startup hooks can execute code. `hostname`
+is read-only only without arguments because Unix accepts a mutating name
+argument.
 
 ---
 
