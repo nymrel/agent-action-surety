@@ -44,7 +44,7 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Typecheck, build, and test current source
         run: npm run check
