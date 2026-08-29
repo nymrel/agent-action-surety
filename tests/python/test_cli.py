@@ -137,7 +137,7 @@ class TestCli(unittest.TestCase):
             self.assertEqual(result.output, "surety-ok")
             self.assertFalse(os.path.exists(marker))
 
-    def test_wrap_execution_contains_chain_after_read_only_prefix(self):
+    def test_wrap_execution_denies_chain_after_read_only_prefix(self):
         with tempfile.TemporaryDirectory(prefix="surety-read-only-") as temp_dir:
             marker = os.path.join(temp_dir, "must-not-exist.txt")
             writer = f"from pathlib import Path; Path({marker!r}).write_text('owned')"
@@ -164,13 +164,12 @@ class TestCli(unittest.TestCase):
                 ),
             )
 
-            self.assertTrue(result.evaluation.allowed)
+            self.assertFalse(result.evaluation.allowed)
             self.assertEqual(
                 result.evaluation.capabilities_required,
-                ["exec:read_only"],
+                ["exec:modify"],
             )
-            self.assertTrue(result.success)
-            self.assertIn("Python", result.output)
+            self.assertFalse(result.success)
             self.assertFalse(os.path.exists(marker))
 
     def test_parse_failure_records_deny_before_custom_execution(self):

@@ -156,7 +156,7 @@ describe('CLI Engine Suite', () => {
     }
   });
 
-  it('contains a chain after a policy-approved read-only prefix', async () => {
+  it('denies a chain after a read-only prefix before execution', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'surety-read-only-'));
     const marker = path.join(tempDir, 'must-not-exist.txt');
     const writer = `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'owned')`;
@@ -179,10 +179,9 @@ describe('CLI Engine Suite', () => {
         workingDir: tempDir,
       });
 
-      assert.strictEqual(result.evaluation.allowed, true);
-      assert.deepStrictEqual(result.evaluation.capabilitiesRequired, ['exec:read_only']);
-      assert.strictEqual(result.success, true);
-      assert.match(String(result.output), /^v\d+/);
+      assert.strictEqual(result.evaluation.allowed, false);
+      assert.deepStrictEqual(result.evaluation.capabilitiesRequired, ['exec:modify']);
+      assert.strictEqual(result.success, false);
       assert.strictEqual(fs.existsSync(marker), false);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
