@@ -1,35 +1,6 @@
-#!/usr/bin/env python3
-"""Setup script for agent-action-surety."""
-from setuptools import setup, find_packages
-import os
+"""Compatibility shim; all package metadata lives in pyproject.toml."""
 
-long_description = ""
-if os.path.exists("README.md"):
-    with open("README.md", encoding="utf-8") as f:
-        long_description = f.read()
+from setuptools import setup
 
-setup(
-    name="agent-action-surety",
-    version="1.0.0",
-    description="Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents.",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    author="Nymrel",
-    author_email="contact@nymrel.com",
-    url="https://github.com/nymrel/agent-action-surety",
-    package_dir={"": "python"},
-    packages=find_packages(where="python"),
-    python_requires=">=3.9",
-    install_requires=[],
-    entry_points={
-        "console_scripts": [
-            "agent-surety=agent_action_surety.cli:main",
-        ],
-    },
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-        "Topic :: Security",
-    ],
-)
+
+setup()

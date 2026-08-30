@@ -6,95 +6,165 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   node:
     name: Node.js ${{ matrix.node-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            node-version: '18'
-          - os: ubuntu-latest
-            node-version: '20'
-          - os: ubuntu-latest
-            node-version: '22'
-          - os: ubuntu-latest
-            node-version: '24'
-          - os: windows-latest
-            node-version: '24'
-
+          - { os: ubuntu-24.04, node-version: '22' }
+          - { os: ubuntu-24.04, node-version: '24' }
+          - { os: ubuntu-24.04, node-version: '26' }
+          - { os: windows-2025, node-version: '22' }
+          - { os: windows-2025, node-version: '24' }
+          - { os: windows-2025, node-version: '26' }
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
-          cache: npm
+          package-manager-cache: false
+
+      - name: Install the exact reviewed npm outside the checkout
+        # zizmor: ignore[adhoc-packages]
+        working-directory: ${{ runner.temp }}
+        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
 
       - name: Install locked dependencies
-        run: npm ci --ignore-scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Typecheck, build, and test current source
+      - name: Run the complete Node and release contract
         run: npm run check
 
-      - name: Audit locked dependencies
+      - name: Clean-install and smoke-test the npm package
         if: matrix.node-version == '24' && runner.os == 'Linux'
-        run: npm audit --audit-level=high
-
-      - name: Build and smoke-test the installed npm package
-        if: matrix.node-version == '24' && runner.os == 'Linux'
+        # The just-built local tarball is an intentional ad hoc package input.
+        # zizmor: ignore[adhoc-packages]
         shell: bash
         run: |
-          package_tarball="$(npm pack --silent)"
-          npm exec --yes --package "./${package_tarball}" -- agent-surety --help
+          mkdir -p package-out
+          npm pack --ignore-scripts --pack-destination package-out
+          mapfile -t packages < <(find package-out -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#packages[@]}" -eq 1
+          consumer="${RUNNER_TEMP}/npm-consumer"
+          mkdir -p "${consumer}"
+          printf '%s\n' '{"name":"nymrel-surety-consumer","private":true,"type":"module"}' > "${consumer}/package.json"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "${consumer}" "${packages[0]}"
+          NODE_PATH="${consumer}/node_modules" node --input-type=module -e "const api = await import('@nymrel/agent-surety'); if (typeof api.PolicyEngine !== 'function' || typeof api.wrapExecution !== 'function') process.exit(1)"
+          node "${consumer}/node_modules/@nymrel/agent-surety/dist/cli.js" --help
 
   python:
     name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            python-version: '3.9'
-          - os: ubuntu-latest
-            python-version: '3.10'
-          - os: ubuntu-latest
-            python-version: '3.11'
-          - os: ubuntu-latest
-            python-version: '3.12'
-          - os: ubuntu-latest
-            python-version: '3.13'
-          - os: ubuntu-latest
-            python-version: '3.14'
-          - os: windows-latest
-            python-version: '3.14'
-
+          - { os: ubuntu-24.04, python-version: '3.11' }
+          - { os: ubuntu-24.04, python-version: '3.12' }
+          - { os: ubuntu-24.04, python-version: '3.13' }
+          - { os: ubuntu-24.04, python-version: '3.14' }
+          - { os: windows-2025, python-version: '3.11' }
+          - { os: windows-2025, python-version: '3.14' }
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Compile Python package
-        run: python -m compileall -q python/agent_action_surety
-
-      - name: Run Python unit tests from current source
+      - name: Compile and test current Python source
         env:
           PYTHONPATH: python
-        run: python -m unittest discover -s tests/python -p 'test_*.py'
+        run: |
+          python -m compileall -q python/agent_action_surety
+          python -m unittest discover -s tests/python -p 'test_*.py'
+
+      - name: Build and clean-install Python distributions
+        if: matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.14'
+        # Exact build tools are intentional release inputs.
+        # zizmor: ignore[adhoc-packages]
+        run: |
+          python -m pip install --disable-pip-version-check build==1.6.0 twine==7.0.0
+          python -m build --outdir python-dist
+          python -m twine check python-dist/*
+          python -c "import pathlib, subprocess, sys; wheel = next(pathlib.Path('python-dist').glob('*.whl')); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--force-reinstall', '--no-deps', str(wheel)])"
+          python -m pip check
+          python -m unittest discover -s tests/python -p 'test_*.py'
+          agent-surety --help
+
+  security:
+    name: Dependency, source, and workflow security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read # Allow Zizmor to resolve action metadata for annotations.
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: Install the exact reviewed npm outside the checkout
+        # zizmor: ignore[adhoc-packages]
+        working-directory: ${{ runner.temp }}
+        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+
+      - name: Audit locked Node dependencies
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run audit
+          npm run audit:prod
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Scan and audit Python source
+        # Exact scanners are intentional security inputs.
+        # zizmor: ignore[adhoc-packages]
+        run: |
+          python -m pip install --disable-pip-version-check bandit==1.9.4 pip-audit==2.10.1
+          bandit -r python -ll -ii
+          pip-audit --strict .
+
+      - name: Audit GitHub Actions definitions
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          advanced-security: false
+          annotations: true
+          min-confidence: medium
+          min-severity: medium
+          online-audits: false
+          persona: auditor
+          version: 1.29.0
