@@ -21,18 +21,25 @@ Thank you for your interest in contributing to `agent-action-surety`!
 
 ## Development Workflow
 
-### TypeScript
-```bash
-# Typecheck
-npm run lint
+### TypeScript / Node.js
 
-# Run Node.js unit tests
-npm test
+The repository defaults to Node.js 24. Node.js 22 and 24 use the bundled
+Corepack activation below. Node.js 26 is supported but does not bundle
+Corepack; before entering the checkout, install the reviewed CLI with
+`npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund`.
+
+```bash
+corepack enable npm
+npm --version # must print 11.19.1
+npm ci --ignore-scripts --no-audit --no-fund
+npm run check
+npm run audit
+npm run audit:prod
 ```
 
 ### Python
 ```bash
-# Run Python unit tests
+# Use a maintained Python 3.11 through 3.14 interpreter.
 python -m unittest discover -s tests/python -p "test_*.py"
 ```
 
@@ -42,5 +49,5 @@ python -m unittest discover -s tests/python -p "test_*.py"
 
 1. Fork the repository and create a feature branch (`git checkout -b feature/awesome-interceptor`).
 2. Write unit tests covering both safe and malicious input variations.
-3. Ensure all tests in both TypeScript and Python pass with 100% green exit codes.
+3. Run the complete Node and Python gates above with green exit codes.
 4. Submit a PR describing the security threat vector addressed and the verification proof.

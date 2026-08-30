@@ -3,8 +3,9 @@
 > **Zero-Dependency Execution Firewall, Path Sandbox, Command Interceptor, and Cryptographic Audit Ledger for AI Coding Agents and Autonomous Tool-Calling Swarms.**
 
 [![CI](https://github.com/nymrel/agent-action-surety/actions/workflows/ci.yml/badge.svg)](https://github.com/nymrel/agent-action-surety/actions)
-[![npm version](https://img.shields.io/npm/v/@nymrel/agent-surety.svg)](https://www.npmjs.com/package/@nymrel/agent-surety)
-[![Python Version](https://img.shields.io/pypi/pyversions/agent-action-surety.svg)](https://pypi.org/project/agent-action-surety/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%20%7C%2024%20%7C%2026-339933?logo=node.js)](https://nodejs.org)
+[![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?logo=python)](https://python.org)
+[![Registry status](https://img.shields.io/badge/Registries-Unpublished-8A6D3B)](#quickstart)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Entity: Nymrel](https://img.shields.io/badge/Entity-Nymrel%20%7C%20JalenBuilds%20LLC-2A332E)](https://nymrel.com)
 
@@ -96,7 +97,41 @@ Any retrospective tampering with command logs, action statuses, or timestamps is
 
 ## 🚀 Quickstart
 
-### Node.js / TypeScript
+> [!IMPORTANT]
+> As of 2026-08-30, neither registry package has been published. The npm and
+> PyPI install commands below are reserved for the first trusted release and
+> will fail until the registry owners finish provider-side provisioning.
+
+### Install from source today
+
+The checked-in `.node-version` selects Node.js 24, where Corepack is bundled.
+Node.js 22 works the same way. Node.js 26 is supported but no longer bundles
+Corepack; from outside the checkout, first run
+`npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund`.
+
+```bash
+git clone https://github.com/nymrel/agent-action-surety.git
+cd agent-action-surety
+
+# Default Node.js 24 path. Node.js 26 uses the external bootstrap above.
+corepack enable npm
+npm --version # must print 11.19.1
+npm ci --ignore-scripts --no-audit --no-fund
+npm run check
+npm run audit
+npm run audit:prod
+npm pack --ignore-scripts
+
+# Python source install and tests.
+python -m pip install --disable-pip-version-check --no-deps .
+python -m unittest discover -s tests/python -p "test_*.py"
+```
+
+Pin the checkout to a reviewed commit before production or automated adoption.
+
+### Node.js / TypeScript API
+
+After the first trusted npm release:
 
 ```bash
 npm install @nymrel/agent-surety
@@ -127,7 +162,9 @@ if (!result.success) {
 }
 ```
 
-### Python
+### Python API
+
+After the first trusted PyPI release:
 
 ```bash
 pip install agent-action-surety
@@ -266,15 +303,20 @@ Run the comprehensive test suites across both Node.js and Python:
 
 ```bash
 # TypeScript / Node.js Test Suite (Native node:test runner)
-npm ci
+npm --version # must print 11.19.1; use the source bootstrap above
+npm ci --ignore-scripts --no-audit --no-fund
 npm run check
+npm run audit
+npm run audit:prod
 
 # Python Test Suite (Native unittest runner)
 PYTHONPATH=python python -m unittest discover -s tests/python -p "test_*.py"
 ```
 
-The hosted compatibility matrix covers Node.js 18, 20, 22, and 24 plus Python
-3.9 through 3.14. The package has no runtime dependencies in either ecosystem.
+The compatibility contract covers maintained Node.js 22, 24, and 26 plus
+Python 3.11 through 3.14 on pinned Linux and Windows runners. Exact-head hosted
+evidence remains a separate release gate. The package has no runtime
+dependencies in either ecosystem.
 
 ---
 
