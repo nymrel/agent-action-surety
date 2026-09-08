@@ -75,8 +75,8 @@ jobs:
           consumer="${RUNNER_TEMP}/npm-consumer"
           mkdir -p "${consumer}"
           printf '%s\n' '{"name":"nymrel-surety-consumer","private":true,"type":"module"}' > "${consumer}/package.json"
-          npm install --ignore-scripts --no-audit --no-fund --prefix "${consumer}" "${packages[0]}"
-          NODE_PATH="${consumer}/node_modules" node --input-type=module -e "const api = await import('@nymrel/agent-surety'); if (typeof api.PolicyEngine !== 'function' || typeof api.wrapExecution !== 'function') process.exit(1)"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "${consumer}" "${GITHUB_WORKSPACE}/${packages[0]}"
+          (cd "${consumer}" && node --input-type=module -e "const api = await import('@nymrel/agent-surety'); if (typeof api.PolicyEngine !== 'function' || typeof api.wrapExecution !== 'function') process.exit(1)")
           node "${consumer}/node_modules/@nymrel/agent-surety/dist/cli.js" --help
 
       - name: Set up Python 3.14
@@ -159,7 +159,7 @@ jobs:
         run: |
           mapfile -t packages < <(find release/npm -maxdepth 1 -type f -name '*.tgz' -print)
           test "${#packages[@]}" -eq 1
-          npm publish "${packages[0]}" --access public
+          npm publish "${GITHUB_WORKSPACE}/${packages[0]}" --access public
 
   publish-pypi:
     name: Publish PyPI with trusted publishing
