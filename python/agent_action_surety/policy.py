@@ -21,6 +21,261 @@ from .sandbox import SuretySandbox
 from .interceptors import CommandInterceptor
 
 
+MAX_POLICY_COMMAND_CHARACTERS = 32_768
+POLICY_ASCII_WHITESPACE = frozenset(" \t\n\r\f\v")
+SIMPLE_READ_ONLY_EXECUTABLES = {
+    "ls", "dir", "pwd", "echo", "cat", "type", "head", "tail", "grep",
+    "findstr", "whoami", "uname",
+}
+GIT_GLOBAL_OPTIONS_WITH_VALUES = {
+    "-c", "-C", "--config-env", "--git-dir", "--work-tree", "--namespace",
+    "--super-prefix",
+}
+GIT_GLOBAL_FLAG_OPTIONS = {
+    "-p", "--paginate", "--no-pager", "--bare", "--no-replace-objects",
+    "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs",
+    "--icase-pathspecs", "--no-optional-locks", "--version", "--help",
+}
+GIT_READ_ONLY_SUBCOMMANDS = {
+    "annotate", "blame", "cat-file", "count-objects", "describe", "diff",
+    "diff-files", "diff-index", "diff-tree", "for-each-ref", "log", "ls-files",
+    "ls-remote", "ls-tree", "merge-base", "name-rev", "rev-list", "rev-parse",
+    "shortlog", "show", "show-branch", "status", "version",
+}
+
+
+def _parse_policy_command_argv(command: str) -> Optional[List[str]]:
+    """Mirror the public portable argv grammar and fail closed on ambiguity."""
+    if len(command) > MAX_POLICY_COMMAND_CHARACTERS:
+        return None
+
+    argv: List[str] = []
+    current: List[str] = []
+    quote: Optional[str] = None
+    token_started = False
+    index = 0
+
+    while index < len(command):
+        character = command[index]
+        code_point = ord(character)
+        is_whitespace = character in POLICY_ASCII_WHITESPACE
+        is_control = (
+            code_point <= 0x1F
+            or code_point == 0x7F
+            or 0x80 <= code_point <= 0x9F
+        )
+        if is_control and not is_whitespace:
+            return None
+
+        if quote is None:
+            if is_whitespace:
+                if token_started:
+                    argv.append("".join(current))
+                    current = []
+                    token_started = False
+                index += 1
+                continue
+            if character in ("'", '"'):
+                quote = character
+                token_started = True
+                index += 1
+                continue
+            current.append(character)
+            token_started = True
+            index += 1
+            continue
+
+        if character == quote:
+            quote = None
+            index += 1
+            continue
+        if (
+            quote == '"'
+            and character == "\\"
+            and index + 1 < len(command)
+            and command[index + 1] in ('"', "\\")
+        ):
+            current.append(command[index + 1])
+            token_started = True
+            index += 2
+            continue
+        current.append(character)
+        token_started = True
+        index += 1
+
+    if quote is not None:
+        return None
+    if token_started:
+        argv.append("".join(current))
+    if not argv or not argv[0]:
+        return None
+    return argv
+
+
+def _ripgrep_argument_can_spawn_helper(argument: str) -> bool:
+    lower = argument.lower()
+    if (
+        lower == "--pre"
+        or lower.startswith("--pre=")
+        or lower == "--pre-glob"
+        or lower.startswith("--pre-glob=")
+        or lower == "--hostname-bin"
+        or lower.startswith("--hostname-bin=")
+        or lower == "--search-zip"
+        or lower.startswith("--search-zip=")
+    ):
+        return True
+    return lower.startswith("-") and not lower.startswith("--") and "z" in lower[1:]
+
+
+def _command_contains_shell_syntax(command: str) -> bool:
+    return any(character in command for character in "\r\n;&|<>()`") or "$(" in command or "${" in command
+
+
+def _is_read_only_command_argv(argv: List[str]) -> bool:
+    executable = argv[0].lower()
+    args = argv[1:]
+
+    if executable in SIMPLE_READ_ONLY_EXECUTABLES:
+        return True
+    if executable == "hostname":
+        return not args
+    if executable == "node":
+        return len(args) == 1 and args[0] in ("-v", "--version")
+    if executable == "rg":
+        # Requiring --no-config in the first argument position prevents it
+        # from becoming an option value or a positional after ``--``.
+        return bool(args) and args[0].lower() == "--no-config" and not any(
+            _ripgrep_argument_can_spawn_helper(arg) for arg in args
+        )
+
+    # Git can execute aliases, external diff/textconv helpers, fsmonitor hooks,
+    # and pagers from repository, user, or environment configuration.
+    return False
+
+
+def _policy_executable_basename(executable: str) -> str:
+    return executable.replace("\\", "/").rsplit("/", 1)[-1].lower()
+
+
+def _find_git_subcommand(tokens: List[str]) -> Optional[str]:
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        lower = token.lower()
+        if lower == "--":
+            return None
+        if token in GIT_GLOBAL_OPTIONS_WITH_VALUES or lower in GIT_GLOBAL_OPTIONS_WITH_VALUES:
+            index += 2
+            if index > len(tokens):
+                return None
+            continue
+        if lower.startswith((
+            "--config-env=", "--git-dir=", "--work-tree=", "--namespace=",
+            "--super-prefix=", "--exec-path=",
+        )):
+            index += 1
+            continue
+        if lower == "--exec-path" or lower in GIT_GLOBAL_FLAG_OPTIONS:
+            index += 1
+            continue
+        if lower.startswith("-"):
+            return None
+        return lower
+    return None
+
+
+def _infer_git_capability(command: str) -> str:
+    argv = _parse_policy_command_argv(command)
+    if argv is None:
+        return "git:force_push"
+
+    executable = _policy_executable_basename(argv[0])
+    tokens = argv[1:] if executable in ("git", "git.exe") else argv
+    lower = [token.lower() for token in tokens]
+    subcommand = _find_git_subcommand(tokens)
+    is_push = subcommand == "push"
+
+    if any(
+        token.startswith("--force")
+        or (
+            token.startswith("-")
+            and not token.startswith("--")
+            and "f" in token[1:]
+        )
+        for token in lower
+    ) or (
+        is_push
+        and any(
+            token == "--mirror"
+            or token.startswith("--delete")
+            or (
+                token.startswith("-")
+                and not token.startswith("--")
+                and "d" in token[1:]
+            )
+            or token == "--prune"
+            or token.startswith("+")
+            or token.startswith(":")
+            for token in lower
+        )
+    ):
+        return "git:force_push"
+    if is_push:
+        return "git:push"
+
+    if subcommand is not None and subcommand in GIT_READ_ONLY_SUBCOMMANDS:
+        return "git:read"
+
+    # Unknown or locally mutating Git commands fail closed to the only local
+    # mutation capability in the public taxonomy.
+    return "git:commit"
+
+
+def _git_command_requires_privileged(command: str, capability: str) -> bool:
+    if capability == "git:force_push":
+        return True
+
+    argv = _parse_policy_command_argv(command)
+    if argv is None:
+        return True
+    executable = _policy_executable_basename(argv[0])
+    tokens = argv[1:] if executable in ("git", "git.exe") else argv
+    lower = [token.lower() for token in tokens]
+    subcommand = _find_git_subcommand(tokens)
+
+    if subcommand == "reset" and "--hard" in lower:
+        return True
+    if subcommand == "clean":
+        short_flags = "".join(
+            token
+            for token in lower
+            if token.startswith("-") and not token.startswith("--")
+        )
+        has_force = "--force" in lower or "f" in short_flags
+        has_directories = "-d" in lower or "d" in short_flags
+        has_ignored = "-x" in lower or "x" in short_flags
+        if has_force and has_directories and has_ignored:
+            return True
+    if subcommand == "branch":
+        deletes = any(
+            token.lower().startswith("--delete")
+            or (
+                token.startswith("-")
+                and not token.startswith("--")
+                and ("d" in token[1:] or "D" in token[1:])
+            )
+            for token in tokens
+        )
+        protected_branch = any(
+            token in {"main", "master", "prod", "production", "release", "staging"}
+            for token in lower
+        )
+        if deletes and protected_branch:
+            return True
+    return False
+
+
 class PolicyEngine:
     def __init__(
         self,
@@ -107,7 +362,16 @@ class PolicyEngine:
             caps.append("fs:delete")
         elif action_type == "exec":
             cmd = (action.command or "").strip()
-            is_destructive = self.interceptor.is_destructive(cmd)
+            argv = _parse_policy_command_argv(cmd)
+            is_direct_git = (
+                argv is not None
+                and _policy_executable_basename(argv[0]) in ("git", "git.exe")
+            )
+            git_capability = _infer_git_capability(cmd) if is_direct_git else None
+            is_destructive = self.interceptor.is_destructive(cmd) or (
+                git_capability is not None
+                and _git_command_requires_privileged(cmd, git_capability)
+            )
             if is_destructive:
                 caps.append("exec:privileged")
             elif self._is_read_only_shell_command(cmd):
@@ -115,15 +379,8 @@ class PolicyEngine:
             else:
                 caps.append("exec:modify")
 
-            if cmd.startswith("git "):
-                if "--force" in cmd or " -f" in cmd:
-                    caps.append("git:force_push")
-                elif cmd.startswith("git push"):
-                    caps.append("git:push")
-                elif cmd.startswith("git commit"):
-                    caps.append("git:commit")
-                else:
-                    caps.append("git:read")
+            if git_capability is not None:
+                caps.append(git_capability)
         elif action_type == "net":
             caps.append("net:http")
         elif action_type == "db":
@@ -143,28 +400,24 @@ class PolicyEngine:
             else:
                 caps.append("cloud:read")
         elif action_type == "git":
-            cmd = (action.command or "").lower()
-            if "--force" in cmd or "-f" in cmd:
-                caps.append("git:force_push")
-            elif "push" in cmd:
-                caps.append("git:push")
-            elif "commit" in cmd:
-                caps.append("git:commit")
-            else:
-                caps.append("git:read")
+            cmd = action.command or ""
+            git_capability = _infer_git_capability(cmd)
+            caps.append(
+                "exec:privileged"
+                if _git_command_requires_privileged(cmd, git_capability)
+                else "exec:modify"
+            )
+            caps.append(git_capability)
         else:
             caps.append("exec:modify")
 
         return caps
 
     def _is_read_only_shell_command(self, cmd: str) -> bool:
-        read_only_prefixes = [
-            "ls", "dir", "pwd", "echo", "cat", "type", "head", "tail", "grep", "rg",
-            "findstr", "node -v", "npm -v", "python --version", "git status", "git log",
-            "git diff", "git branch", "whoami", "uname", "hostname"
-        ]
-        lower = cmd.lower().strip()
-        return any(lower == p or lower.startswith(p + " ") for p in read_only_prefixes)
+        if _command_contains_shell_syntax(cmd):
+            return False
+        argv = _parse_policy_command_argv(cmd)
+        return argv is not None and _is_read_only_command_argv(argv)
 
     def evaluate(self, action: ActionEnvelope) -> PolicyEvaluationResult:
         now_ms = float(action.timestamp or (time.time() * 1000))

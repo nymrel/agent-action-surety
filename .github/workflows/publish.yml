@@ -1,171 +1,186 @@
-name: Release & Publish (npm + PyPI)
+name: Trusted Release
 
 on:
   push:
-    branches: [main, master]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main, master]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test-node:
-    name: Test Node.js (${{ matrix.node-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
+  quality:
+    name: Maintained-runtime and security gates
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      actions: read
+      contents: read
 
+  codeql:
+    name: CodeQL gate
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  build:
+    name: Build and verify one release bundle
+    needs: [quality, codeql]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-        continue-on-error: true
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Install dependencies
-        run: npm ci || npm install
+      - name: Set up release Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
 
-      - name: Build bundle
-        run: npm run build
+      - name: Install the exact trusted-publishing npm CLI
+        # zizmor: ignore[adhoc-packages]
+        working-directory: ${{ runner.temp }}
+        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
 
-      - name: Run Node.js test suite
-        run: npm test
+      - name: Verify source, ancestry, and Node distribution
+        # The just-built local tarball is an intentional ad hoc package input.
+        # zizmor: ignore[adhoc-packages]
+        shell: bash
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm run audit
+          npm run audit:prod
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
+            npm run release:verify -- --tag "${GITHUB_REF_NAME}"
+          else
+            npm run release:verify
+          fi
+          mkdir -p release/npm
+          npm pack --ignore-scripts --pack-destination release/npm
+          mapfile -t packages < <(find release/npm -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#packages[@]}" -eq 1
+          consumer="${RUNNER_TEMP}/npm-consumer"
+          mkdir -p "${consumer}"
+          printf '%s\n' '{"name":"nymrel-surety-consumer","private":true,"type":"module"}' > "${consumer}/package.json"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "${consumer}" "${GITHUB_WORKSPACE}/${packages[0]}"
+          (cd "${consumer}" && node --input-type=module -e "const api = await import('@nymrel/agent-surety'); if (typeof api.PolicyEngine !== 'function' || typeof api.wrapExecution !== 'function') process.exit(1)")
+          node "${consumer}/node_modules/@nymrel/agent-surety/dist/cli.js" --help
 
-  test-python:
-    name: Test Python (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.11', '3.12']
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
 
+      - name: Build, validate, and clean-install Python distributions
+        # Exact build tools and the local wheel are intentional package inputs.
+        # zizmor: ignore[adhoc-packages]
+        run: |
+          python -m pip install --disable-pip-version-check build==1.6.0 twine==7.0.0
+          python -m build --outdir release/python
+          python -m twine check release/python/*
+          python -c "import pathlib, subprocess, sys; wheel = next(pathlib.Path('release/python').glob('*.whl')); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--force-reinstall', '--no-deps', str(wheel)])"
+          python -m pip check
+          python -m unittest discover -s tests/python -p 'test_*.py'
+          agent-surety --help
+
+      - name: Upload the immutable release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-distributions-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  attest-release:
+    name: Attest the immutable release candidate
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      attestations: write # Create provenance for the exact npm, wheel, and sdist artifacts.
+      contents: read
+      id-token: write # Exchange the workflow identity for the attestation signing token.
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Download the verified release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-        continue-on-error: true
+          name: release-distributions-${{ github.sha }}
+          path: release
 
-      - name: Install dependencies & build tools
-        run: |
-          python -m pip install --upgrade pip setuptools wheel pytest
-          pip install -e . || pip install . || true
-
-      - name: Run Python unit tests
-        env:
-          PYTHONPATH: ./:./python:./src
-        run: python -m unittest discover -s tests/python -p 'test_*.py'
-
-  security-audit:
-    name: Security & DevSecOps Audit
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+      - name: Generate build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          node-version: 20.x
-
-      - name: NPM Security Audit
-        run: |
-          npm audit --audit-level=high || echo "::warning ::NPM audit reported potential high-severity advisories"
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Bandit & Pip-Audit
-        run: pip install --upgrade bandit pip-audit
-
-      - name: Bandit SAST Security Scan
-        run: |
-          bandit -r . -x ./node_modules,./dist,./.git,./test,./tests,./python/tests,./tests/python -ll -ii || echo "::warning ::Bandit flagged potential security issues"
-
-      - name: Pip-Audit Dependency Vulnerability Scan
-        run: |
-          pip-audit || echo "::warning ::Pip-audit check completed"
+          subject-path: release/**/*
 
   publish-npm:
-    name: Publish to npm (OIDC Provenance)
-    needs: [test-node, test-python, security-audit]
+    name: Publish npm with trusted publishing
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    needs: [build, attest-release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write
-
+      id-token: write # Exchange the npm environment identity for a short-lived publish token.
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20.x
-        uses: actions/setup-node@v4
+      - name: Download the verified release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          node-version: 20.x
-          registry-url: 'https://registry.npmjs.org'
+          name: release-distributions-${{ github.sha }}
+          path: release
 
-      - name: Install dependencies
-        run: npm ci || npm install
+      - name: Set up trusted-publishing Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.20.0'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
-      - name: Prepublish validation (build & test)
-        run: npm run prepublishOnly
+      - name: Install the exact trusted-publishing npm CLI
+        # zizmor: ignore[adhoc-packages]
+        working-directory: ${{ runner.temp }}
+        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
 
-      - name: Publish package to npm with OIDC provenance
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+      - name: Publish exactly one npm distribution
+        shell: bash
+        run: |
+          mapfile -t packages < <(find release/npm -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#packages[@]}" -eq 1
+          npm publish "${GITHUB_WORKSPACE}/${packages[0]}" --access public
 
   publish-pypi:
-    name: Publish to PyPI (OIDC Trusted Publishing)
-    needs: [test-node, test-python, security-audit]
+    name: Publish PyPI with trusted publishing
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+    needs: [build, attest-release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/agent-action-surety
-
+    permissions:
+      contents: read
+      id-token: write # Exchange the PyPI environment identity for a short-lived publish token.
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Download the verified release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          python-version: '3.11'
+          name: release-distributions-${{ github.sha }}
+          path: release
 
-      - name: Install packaging tools & twine
-        run: pip install --upgrade pip build twine
-
-      - name: Build source distribution and binary wheel
-        run: python -m build
-
-      - name: Validate distribution integrity
-        run: twine check dist/*
-
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish the Python distributions
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
-          skip-existing: true
-          verbose: true
+          packages-dir: release/python

@@ -3,8 +3,9 @@
 > **Zero-Dependency Execution Firewall, Path Sandbox, Command Interceptor, and Cryptographic Audit Ledger for AI Coding Agents and Autonomous Tool-Calling Swarms.**
 
 [![CI](https://github.com/nymrel/agent-action-surety/actions/workflows/ci.yml/badge.svg)](https://github.com/nymrel/agent-action-surety/actions)
-[![npm version](https://img.shields.io/npm/v/@nymrel/agent-surety.svg)](https://www.npmjs.com/package/@nymrel/agent-surety)
-[![Python Version](https://img.shields.io/pypi/pyversions/agent-action-surety.svg)](https://pypi.org/project/agent-action-surety/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%20%7C%2024%20%7C%2026-339933?logo=node.js)](https://nodejs.org)
+[![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?logo=python)](https://python.org)
+[![Registry status](https://img.shields.io/badge/Registries-Unpublished-8A6D3B)](#quickstart)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Entity: Nymrel](https://img.shields.io/badge/Entity-Nymrel%20%7C%20JalenBuilds%20LLC-2A332E)](https://nymrel.com)
 
@@ -46,7 +47,7 @@ Autonomous AI agents (such as Codex, Claude, Cursor, Devin, OpenDevin, and custo
 
 ### 1. 📦 Zero Runtime Dependencies
 - **TypeScript / Node.js Engine**: Uses **100% standard library** (`node:crypto`, `node:fs`, `node:path`, `node:child_process`, `node:readline`). No npm supply chain risk.
-- **Python Engine**: Uses **100% standard library** (`hashlib`, `hmac`, `os`, `sys`, `pathlib`, `re`, `shlex`, `subprocess`, `dataclasses`, `secrets`). No pip vulnerability exposure.
+- **Python Engine**: Uses **100% standard library** (`hashlib`, `hmac`, `os`, `sys`, `pathlib`, `re`, `subprocess`, `dataclasses`, `secrets`). No pip runtime dependency exposure.
 
 ### 2. 🔒 Deny-by-Default Capability System
 Actions are rejected unless explicit capabilities are granted:
@@ -96,7 +97,41 @@ Any retrospective tampering with command logs, action statuses, or timestamps is
 
 ## 🚀 Quickstart
 
-### Node.js / TypeScript
+> [!IMPORTANT]
+> As of 2026-08-30, neither registry package has been published. The npm and
+> PyPI install commands below are reserved for the first trusted release and
+> will fail until the registry owners finish provider-side provisioning.
+
+### Install from source today
+
+The checked-in `.node-version` selects Node.js 24, where Corepack is bundled.
+Node.js 22 works the same way. Node.js 26 is supported but no longer bundles
+Corepack; from outside the checkout, first run
+`npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund`.
+
+```bash
+git clone https://github.com/nymrel/agent-action-surety.git
+cd agent-action-surety
+
+# Default Node.js 24 path. Node.js 26 uses the external bootstrap above.
+corepack enable npm
+npm --version # must print 11.19.1
+npm ci --ignore-scripts --no-audit --no-fund
+npm run check
+npm run audit
+npm run audit:prod
+npm pack --ignore-scripts
+
+# Python source install and tests.
+python -m pip install --disable-pip-version-check --no-deps .
+python -m unittest discover -s tests/python -p "test_*.py"
+```
+
+Pin the checkout to a reviewed commit before production or automated adoption.
+
+### Node.js / TypeScript API
+
+After the first trusted npm release:
 
 ```bash
 npm install @nymrel/agent-surety
@@ -127,7 +162,9 @@ if (!result.success) {
 }
 ```
 
-### Python
+### Python API
+
+After the first trusted PyPI release:
 
 ```bash
 pip install agent-action-surety
@@ -173,7 +210,7 @@ agent-surety check --cmd "rm -rf /"
 # Reason: Root or Wildcard Recursive Deletion (CRITICAL)
 
 # 2. Execute command inside the safety envelope
-agent-surety exec --cmd "git status"
+agent-surety exec --cmd "node --version"
 # Output: [SURETY: SUCCESS] (Receipt: a3b819f... | Time: 12ms)
 
 # 3. Validate filesystem path against sandbox containment
@@ -186,6 +223,46 @@ agent-surety verify-receipt --file receipt.json --secret "my-hmac-key"
 # 5. Verify an entire audit ledger Merkle chain
 agent-surety verify-ledger --file audit_ledger.jsonl --secret "my-hmac-key"
 ```
+
+### Default execution contract
+
+The built-in Node and Python executors never pass the command string to an OS
+shell. They first convert it to one executable plus an argument vector, record a
+`DENY` receipt if parsing fails, and then use `execFile` (Node) or
+`subprocess.run(..., shell=False)` (Python). A command such as
+`echo safe && mutate` therefore targets only `echo` as the executable; `&&` and
+the remaining text are literal arguments and never launch `mutate`.
+
+The portable parser has the same contract in both runtimes:
+
+- commands are limited to 32,768 Unicode characters;
+- ASCII whitespace separates arguments;
+- single and double quotes group arguments and are removed;
+- inside double quotes, `\"` and `\\` escape a quote or backslash;
+- backslashes outside double quotes stay literal, including Windows paths;
+- empty quoted arguments are preserved; and
+- malformed quotes, empty executables, NUL bytes, and other control characters
+  fail closed before policy evaluation or custom execution.
+
+Shell operators, redirection, glob expansion, and command substitution are not
+interpreted by the default executor. Explicitly running a shell executable (for
+example, `sh -c` or `cmd.exe /c`) or supplying a custom executor opts back into
+that executor's semantics and should be protected by a correspondingly strict
+policy. Surety remains an application safety gate, not a replacement for
+least-privilege OS credentials, process isolation, or containers.
+
+`exec:read_only` is deliberately conservative about tools that can launch
+helpers. Ripgrep is eligible only when `--no-config` is its first argument and
+the command excludes preprocessing, compressed-search, and hostname-helper
+modes. Git commands require `exec:modify` in addition to the applicable Git
+capability because aliases, external diff/textconv programs, fsmonitor hooks,
+and pagers can execute code even when a subcommand is named `status`, `log`, or
+`diff`. Commands containing shell composition or substitution syntax also
+require `exec:modify`, even when their first executable is normally read-only.
+Runtime launchers such as npm and Python are not treated as read-only version
+checks because environment-driven startup hooks can execute code. `hostname`
+is read-only only without arguments because Unix accepts a mutating name
+argument.
 
 ---
 
@@ -226,11 +303,20 @@ Run the comprehensive test suites across both Node.js and Python:
 
 ```bash
 # TypeScript / Node.js Test Suite (Native node:test runner)
-npm test
+npm --version # must print 11.19.1; use the source bootstrap above
+npm ci --ignore-scripts --no-audit --no-fund
+npm run check
+npm run audit
+npm run audit:prod
 
 # Python Test Suite (Native unittest runner)
-python -m unittest discover -s tests/python -p "test_*.py"
+PYTHONPATH=python python -m unittest discover -s tests/python -p "test_*.py"
 ```
+
+The compatibility contract covers maintained Node.js 22, 24, and 26 plus
+Python 3.11 through 3.14 on pinned Linux and Windows runners. Exact-head hosted
+evidence remains a separate release gate. The package has no runtime
+dependencies in either ecosystem.
 
 ---
 
