@@ -76,7 +76,7 @@ function expectArrayEqual(actual, expected, label) {
 function main() {
   const root = path.resolve(option('--root', process.cwd()));
   const npmPackage = JSON.parse(readText(root, 'package.json'));
-  const requestedTag = option('--tag', process.env.GITHUB_REF_NAME);
+  const requestedTag = option('--tag', process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : undefined);
   const tag = requestedTag ?? `v${npmPackage.version}`;
   if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
     fail(`tag ${JSON.stringify(tag)} is not a stable vMAJOR.MINOR.PATCH release`);
