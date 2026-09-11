@@ -74,5 +74,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://github.com/nymrel/agent-action-surety#readme",
+  "bugs": {
+    "url": "https://github.com/nymrel/agent-action-surety/issues"
   }
 }
