@@ -41,6 +41,9 @@ agent-surety = "agent_action_surety.cli:main"
 [project.urls]
 "Homepage" = "https://github.com/nymrel/agent-action-surety"
 "Bug Tracker" = "https://github.com/nymrel/agent-action-surety/issues"
+"Source" = "https://github.com/nymrel/agent-action-surety"
+"Security" = "https://github.com/nymrel/agent-action-surety/blob/main/SECURITY.md"
+"Roadmap" = "https://github.com/nymrel/agent-action-surety/blob/main/ROADMAP.md"
 
 [tool.setuptools.packages.find]
 where = ["python"]
