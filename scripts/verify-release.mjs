@@ -6,7 +6,7 @@ const EXPECTED = Object.freeze({
   npmName: '@nymrel/agent-surety',
   pythonName: 'agent-action-surety',
   repository: 'https://github.com/nymrel/agent-action-surety.git',
-  packageManager: 'npm@11.19.1',
+  packageManager: 'npm@12.0.2',
   nodeRange: '>=22.22.2 <27',
   pythonRange: '>=3.11,<3.15',
   pythonBuildBackend: 'setuptools.build_meta',
@@ -100,7 +100,7 @@ function main() {
   expectEqual(npmPackage.devEngines?.runtime?.version, EXPECTED.nodeRange, 'development runtime range');
   expectEqual(npmPackage.devEngines?.runtime?.onFail, 'error', 'development runtime failure policy');
   expectEqual(npmPackage.devEngines?.packageManager?.name, 'npm', 'development package-manager name');
-  expectEqual(npmPackage.devEngines?.packageManager?.version, '11.19.1', 'development package-manager version');
+  expectEqual(npmPackage.devEngines?.packageManager?.version, '12.0.2', 'development package-manager version');
   expectEqual(npmPackage.devEngines?.packageManager?.onFail, 'error', 'development package-manager failure policy');
   expectEqual(npmPackage.sideEffects, false, 'npm sideEffects contract');
   expectEqual(npmPackage.exports?.['.']?.types, './dist/index.d.ts', 'npm root type export');

@@ -51,7 +51,7 @@ jobs:
       - name: Install the exact trusted-publishing npm CLI
         # zizmor: ignore[adhoc-packages]
         working-directory: ${{ runner.temp }}
-        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+        run: npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund
 
       - name: Verify source, ancestry, and Node distribution
         # The just-built local tarball is an intentional ad hoc package input.
@@ -152,7 +152,7 @@ jobs:
       - name: Install the exact trusted-publishing npm CLI
         # zizmor: ignore[adhoc-packages]
         working-directory: ${{ runner.temp }}
-        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+        run: npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund
 
       - name: Publish exactly one npm distribution
         shell: bash
