@@ -25,7 +25,7 @@ test('runtime matrices cover maintained families and exclude EOL lanes', () => {
 
 test('exact npm is active before every repository package command', () => {
   const bootstrap = 'npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund';
-  assert.equal((workflows.match(/npm install --global npm@11\.19\.1/g) ?? []).length, 4);
+  assert.equal((workflows.match(/npm install --global npm@12\.0\.2/g) ?? []).length, 4);
   assert.equal((workflows.match(/package-manager-cache:\s*false/g) ?? []).length, 4);
   assert.equal(/^\s*cache:\s*(?:npm|pip)\s*$/m.test(workflows), false);
   for (const document of [ci, release]) {
