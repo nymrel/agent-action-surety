@@ -13,11 +13,11 @@ function fixture(overrides = {}) {
     name: '@nymrel/agent-surety',
     version: '1.0.0',
     repository: { type: 'git', url: 'https://github.com/nymrel/agent-action-surety.git' },
-    packageManager: 'npm@11.19.1',
+    packageManager: 'npm@12.0.2',
     engines: { node: '>=22.22.2 <27' },
     devEngines: {
       runtime: { name: 'node', version: '>=22.22.2 <27', onFail: 'error' },
-      packageManager: { name: 'npm', version: '11.19.1', onFail: 'error' },
+      packageManager: { name: 'npm', version: '12.0.2', onFail: 'error' },
     },
     sideEffects: false,
     exports: { '.': { types: './dist/index.d.ts', import: './dist/index.js', default: './dist/index.js' } },

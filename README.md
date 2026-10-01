@@ -107,7 +107,7 @@ Any retrospective tampering with command logs, action statuses, or timestamps is
 The checked-in `.node-version` selects Node.js 24, where Corepack is bundled.
 Node.js 22 works the same way. Node.js 26 is supported but no longer bundles
 Corepack; from outside the checkout, first run
-`npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund`.
+`npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund`.
 
 ```bash
 git clone https://github.com/nymrel/agent-action-surety.git
@@ -115,7 +115,7 @@ cd agent-action-surety
 
 # Default Node.js 24 path. Node.js 26 uses the external bootstrap above.
 corepack enable npm
-npm --version # must print 11.19.1
+npm --version # must print 12.0.2
 npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 npm run audit
@@ -303,7 +303,7 @@ Run the comprehensive test suites across both Node.js and Python:
 
 ```bash
 # TypeScript / Node.js Test Suite (Native node:test runner)
-npm --version # must print 11.19.1; use the source bootstrap above
+npm --version # must print 12.0.2; use the source bootstrap above
 npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 npm run audit

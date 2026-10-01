@@ -26,11 +26,11 @@ Thank you for your interest in contributing to `agent-action-surety`!
 The repository defaults to Node.js 24. Node.js 22 and 24 use the bundled
 Corepack activation below. Node.js 26 is supported but does not bundle
 Corepack; before entering the checkout, install the reviewed CLI with
-`npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund`.
+`npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund`.
 
 ```bash
 corepack enable npm
-npm --version # must print 11.19.1
+npm --version # must print 12.0.2
 npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 npm run audit

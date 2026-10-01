@@ -45,7 +45,7 @@ jobs:
       - name: Install the exact reviewed npm outside the checkout
         # zizmor: ignore[adhoc-packages]
         working-directory: ${{ runner.temp }}
-        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+        run: npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund
 
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -137,7 +137,7 @@ jobs:
       - name: Install the exact reviewed npm outside the checkout
         # zizmor: ignore[adhoc-packages]
         working-directory: ${{ runner.temp }}
-        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+        run: npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund
 
       - name: Audit locked Node dependencies
         run: |
