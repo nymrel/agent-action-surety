@@ -1,62 +1,26 @@
 # Agent Action Surety (llms.txt)
-> Zero-dependency execution firewall, path sandbox, command interceptor, and cryptographic audit ledger for AI coding agents.
+> Zero-runtime-dependency execution firewall, path sandbox, command interceptor, and tamper-evident audit ledger for AI coding agents.
 
-## Entity & Governance
+## Project status
 - project: agent-action-surety
-- npmPackage: @nymrel/agent-surety
-- pythonPackage: agent_action_surety
-- parentOrganization: Nymrel -> JalenBuilds LLC
-- contact: contact@nymrel.com
-- license: MIT
 - repository: https://github.com/nymrel/agent-action-surety
+- license: MIT
+- steward: Nymrel / JalenBuilds LLC
+- contact: contact@nymrel.com
+- security: security@nymrel.com
+- npmPackage: @nymrel/agent-surety (reserved; unpublished)
+- pythonPackage: agent-action-surety (reserved; unpublished)
+- installStatus: use the reviewed source-install instructions in README.md until trusted registry publication is complete
 
-## Core Capabilities
-- Execution Firewall: Evaluates tool call requests before dispatch.
-- Deny-by-Default Policy Engine: Requires explicit capability grants (fs:read, fs:write, exec:read_only, exec:modify, cloud:read, etc.).
-- Path Containment Sandbox: Restricts filesystem writes to bounded workspace root; blocks traversal, symlink escapes, and secret theft (.env, .ssh, .aws).
-- Command Interceptor: Inspects SQL, Shell, Git, Cloud (AWS, GCP, Azure), Kubernetes, and Package Managers for destructive patterns.
-- Spend & Rate Bounds: Enforces financial budgets, token ceilings, and sliding-window rate limits.
-- Cryptographic Audit Ledger: Emits tamper-evident SHA-256 Merkle-linked execution receipts.
+## Trust boundary
+- Surety is an application safety gate, not an OS/container sandbox or credential authority.
+- The host remains responsible for least-privilege credentials, process isolation, target authorization, and rollback.
+- Default executors avoid shell interpretation and fail closed on malformed command strings.
+- Custom executors or explicit shell launchers reintroduce their own execution semantics and must be separately constrained.
 
-## TypeScript / Node Quickstart
-```typescript
-import { PolicyEngine, SuretySandbox, CommandInterceptor, ExecutionLedger, wrapExecution } from '@nymrel/agent-surety';
-
-const engine = new PolicyEngine({
-  capabilities: ['fs:read', 'fs:write', 'exec:read_only'],
-  allowedPaths: ['./src', './tests'],
-  maxSpendUsd: 10.0,
-  rateLimitPerMinute: 60,
-});
-
-const result = await wrapExecution(engine, {
-  actionType: 'exec',
-  command: 'rm -rf /', // Intercepted and blocked immediately
-  workingDir: process.cwd(),
-});
-```
-
-## Python Quickstart
-```python
-from agent_action_surety import PolicyEngine, wrap_execution
-
-engine = PolicyEngine(
-    capabilities=["fs:read", "fs:write", "exec:read_only"],
-    allowed_paths=["./src", "./tests"],
-    max_spend_usd=10.0,
-    rate_limit_per_minute=60,
-)
-
-result = wrap_execution(
-    engine,
-    action_type="exec",
-    command="rm -rf /",  # Blocked with ViolationReport
-    working_dir=".",
-)
-```
-
-## CLI Wrapper
-```bash
-# Intercept command using default strict policy
-agent-surety exec --cmd "git push --force origin main" --deny-destructive
-```
+## Core capabilities
+- Deny-by-default capability policy.
+- Filesystem root containment and sensitive-path protection.
+- Destructive shell, SQL, Git, cloud, and Kubernetes interception.
+- Spend, token, and action-rate bounds.
+- SHA-256 hash-chained action receipts with optional HMAC verification.

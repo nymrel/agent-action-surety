@@ -320,6 +320,20 @@ dependencies in either ecosystem.
 
 ---
 
+## Open-source stewardship
+
+Project decisions and support paths are public and reviewable:
+
+- [Governance](GOVERNANCE.md) — decision model, maintainer responsibilities, and release authority.
+- [Roadmap](ROADMAP.md) — measurable technical milestones and acceptance evidence.
+- [Contributing](CONTRIBUTING.md) — development and pull-request requirements.
+- [Code of Conduct](CODE_OF_CONDUCT.md) — community participation expectations.
+- [Security](SECURITY.md) — threat model and private vulnerability reporting.
+- [Support](SUPPORT.md) — public bug/support guidance and security escalation.
+- [Citation](CITATION.cff) — research citation metadata.
+
+---
+
 ## 📄 License
 
 MIT License &copy; 2026 **Nymrel / JalenBuilds LLC**. See [LICENSE](LICENSE) for details.
