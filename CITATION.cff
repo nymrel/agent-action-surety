@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use Agent Action Surety in research or evaluations, please cite the repository and the exact commit you evaluated."
+title: "Agent Action Surety"
+type: software
+license: MIT
+repository-code: "https://github.com/nymrel/agent-action-surety"
+url: "https://github.com/nymrel/agent-action-surety"
+abstract: >-
+  A deny-by-default execution safety envelope with path containment,
+  command interception, resource bounds, and tamper-evident action receipts
+  for autonomous AI agents.
+authors:
+  - name: "Nymrel"
+keywords:
+  - ai-agents
+  - ai-safety
+  - execution-security
+  - policy-engine
+  - provenance
+  - tamper-evident
