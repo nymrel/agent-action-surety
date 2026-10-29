@@ -10,7 +10,7 @@ const EXPECTED = Object.freeze({
   nodeRange: '>=22.22.2 <27',
   pythonRange: '>=3.11,<3.15',
   pythonBuildBackend: 'setuptools.build_meta',
-  pythonBuildRequirements: ['setuptools==84.0.0'],
+  pythonBuildRequirements: ['setuptools==84.2.0'],
   npmFiles: ['dist', 'LICENSE', 'README.md'],
   setupShim: '"""Compatibility shim; all package metadata lives in pyproject.toml."""\n\nfrom setuptools import setup\n\n\nsetup()\n',
 });

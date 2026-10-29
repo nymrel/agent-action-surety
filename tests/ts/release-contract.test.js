@@ -29,7 +29,7 @@ function fixture(overrides = {}) {
     version: '1.0.0',
     runtime: '>=3.11,<3.15',
     buildBackend: 'setuptools.build_meta',
-    buildRequirements: ['setuptools==84.0.0'],
+    buildRequirements: ['setuptools==84.2.0'],
     dependencies: [],
     ...overrides.python,
   };
