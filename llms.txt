@@ -19,6 +19,8 @@
 - Custom executors or explicit shell launchers reintroduce their own execution semantics and must be separately constrained.
 
 ## Core capabilities
+- Begin with the reviewed source setup in README.md, then `node dist/cli.js check --cmd "echo hello" --json` for a non-executing policy check.
+- Parse evaluation and receipt with the exit code. A denied action goes to the scope owner; do not enable destructive actions as retry recovery.
 - Deny-by-default capability policy.
 - Filesystem root containment and sensitive-path protection.
 - Destructive shell, SQL, Git, cloud, and Kubernetes interception.

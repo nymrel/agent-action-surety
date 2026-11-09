@@ -13,6 +13,19 @@
 
 ## 🌟 Overview
 
+### Start with your goal
+
+| Audience | First useful action | Completion and recovery |
+| --- | --- | --- |
+| People reviewing agent permissions | Ask for the policy decision and its reasons before an action runs. A `check` is a dry run. | Review the requested command and scope with the runtime owner; an allow decision or receipt is not proof that work finished. |
+| Developers integrating tool calls | Follow the source setup under Quickstart, then run `node dist/cli.js check --cmd "echo hello" --json`. | Confirm a harmless command is accepted and a deliberately out-of-scope request is denied before using `exec`. |
+| Agents and automation | Use the same `check --json` path and parse the `evaluation` and `receipt` objects. | Preserve the exit code and denial reasons. Ask the scope owner to resolve a denied request; do not add `--allow-destructive` as automatic recovery. |
+
+The repository supplies libraries and CLIs, with no hosted customer dashboard
+or MCP endpoint. Human approval and target permissions belong to the calling
+host. See [SUPPORT.md](SUPPORT.md) for help and [llms.txt](llms.txt) for the
+machine-readable entry point.
+
 Autonomous AI agents (such as Codex, Claude, Cursor, Devin, OpenDevin, and custom LLM tool-calling loops) operate in developer and cloud environments with dangerous **ambient authority**. A single hallucination, prompt injection, or logic drift can result in catastrophic `rm -rf /`, database drops (`DROP TABLE`), accidental `git push --force origin main`, or cloud resource deletion (`gcloud projects delete`).
 
 **`agent-action-surety`** provides a complete, dual-language (**TypeScript/Node.js** + **Python**), **zero-runtime-dependency** execution firewall and policy envelope that wraps every agent tool call before execution, enforces strict containment, and logs tamper-evident cryptographic receipts.
