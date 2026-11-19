@@ -54,8 +54,8 @@ test('one release bundle is clean-installed, attested, and reused', () => {
 
 test('CodeQL and workflow self-audit retain explicit least privilege', () => {
   assert.ok(codeql.includes('security-events: write # Upload CodeQL results'));
-  assert.ok(codeql.includes('github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee'));
-  assert.ok(ci.includes('zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e'));
+  assert.ok(codeql.includes('github/codeql-action/init@1fc58d04a4d4374f921bdac573c3811c240f9c26'));
+  assert.ok(ci.includes('zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd'));
   assert.ok(release.includes('attestations: write # Create provenance'));
   assert.ok(release.includes('id-token: write # Exchange the workflow identity'));
 });
